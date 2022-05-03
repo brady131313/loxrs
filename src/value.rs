@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct Value(f64);
 
 impl From<f64> for Value {

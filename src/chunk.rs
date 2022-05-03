@@ -11,6 +11,15 @@ pub enum OpCode {
     Byte(u8),
 }
 
+impl OpCode {
+    pub fn as_byte(&self) -> Option<u8> {
+        match self {
+            Self::Byte(b) => Some(*b),
+            _ => None,
+        }
+    }
+}
+
 impl From<u8> for OpCode {
     fn from(val: u8) -> Self {
         Self::Byte(val)
@@ -23,6 +32,7 @@ pub struct LineStart {
     line: usize,
 }
 
+#[derive(Debug)]
 pub struct Chunk {
     code: Vec<OpCode>,
     constants: Vec<Value>,
@@ -64,10 +74,11 @@ impl Chunk {
     }
 
     pub fn get_byte(&self, offset: usize) -> u8 {
-        match self.code.get(offset) {
-            Some(OpCode::Byte(b)) => *b,
-            _ => panic!("Expected byte at offset: {offset}"),
-        }
+        self.get_op(offset).as_byte().expect("Expected byte")
+    }
+
+    pub fn get_op(&self, offset: usize) -> OpCode {
+        *self.code.get(offset).expect("Expected op at offset")
     }
 
     pub fn add_constant<V: Into<Value>>(&mut self, value: V) -> usize {
@@ -91,8 +102,6 @@ impl Chunk {
     }
 
     pub fn disassemble_chunk(&self, name: &str) {
-        // println!("{:?}", self.lines);
-        // println!("{:?}", self.code);
         println!("== {name} ==");
 
         let mut offset = 0;
@@ -101,7 +110,7 @@ impl Chunk {
         }
     }
 
-    fn disassemble_instruction(&self, offset: usize) -> usize {
+    pub fn disassemble_instruction(&self, offset: usize) -> usize {
         print!("{offset:04} ");
 
         let line = self.get_line(offset);
