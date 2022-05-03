@@ -81,16 +81,18 @@ impl Chunk {
             .expect("expected value at index")
     }
 
-    pub fn get_line(&self, instruction: usize) -> usize {
+    pub fn get_line(&self, instruction: usize) -> Option<usize> {
         let idx = self
             .lines
             .binary_search_by(|l| l.offset.cmp(&instruction))
-            .expect("expected to find a line number");
+            .ok()?;
 
-        self.lines[idx].line
+        Some(self.lines[idx].line)
     }
 
     pub fn disassemble_chunk(&self, name: &str) {
+        // println!("{:?}", self.lines);
+        // println!("{:?}", self.code);
         println!("== {name} ==");
 
         let mut offset = 0;
@@ -106,7 +108,7 @@ impl Chunk {
         if offset > 0 && line == self.get_line(offset - 1) {
             print!("\t| ")
         } else {
-            print!("{:4} ", line)
+            print!("{:4} ", line.expect("A line number from offset"))
         }
 
         match self.code[offset] {
