@@ -1,21 +1,26 @@
-use std::error::Error;
+use std::{error::Error, path::Path};
 
-use lox_rs::{chunk::{Chunk, OpCode}, vm::Vm};
-use rustyline::{Editor, error::ReadlineError};
+use lox_rs::{
+    chunk::{Chunk, OpCode},
+    vm::{InterpretError, Vm},
+};
+use rustyline::{error::ReadlineError, Editor};
 
-const _HISTORY: &'static str = ".lox_history.txt";
+const HISTORY: &'static str = ".lox_history.txt";
 
-fn _repl() -> Result<(), Box<dyn Error>> {
+fn repl() {
     let mut rl = Editor::<()>::new();
-    rl.load_history(_HISTORY).unwrap_or(());
+    rl.load_history(HISTORY).unwrap_or(());
 
+    let mut vm = Vm::new();
     loop {
         let readline = rl.readline("lox> ");
         match readline {
             Ok(line) => {
-                println!("{line}");
-                rl.add_history_entry(line.as_str());
-            },
+                if let Ok(_) = vm.interpret(line.as_str()) {
+                    rl.add_history_entry(line.as_str());
+                }
+            }
             Err(ReadlineError::Interrupted | ReadlineError::Eof) => break,
             Err(err) => {
                 eprintln!("Error: {err:?}");
@@ -24,24 +29,36 @@ fn _repl() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    rl.save_history(_HISTORY)?;
-    Ok(())
+    if let Err(e) = rl.save_history(HISTORY) {
+        eprintln!("Failed to save history, {e}")
+    }
+}
+
+fn run_file<P: AsRef<Path>>(path: P) {
+    let src = match std::fs::read_to_string(path) {
+        Ok(src) => src,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(74)
+        }
+    };
+
+    let mut vm = Vm::new();
+    match vm.interpret(&src) {
+        Ok(_) => {}
+        Err(InterpretError::Compile) => std::process::exit(65),
+        Err(InterpretError::Runtime) => std::process::exit(70),
+    }
 }
 
 fn main() {
-    let mut vm = Vm::new();
-    let mut chunk = Chunk::new();
-
-    chunk.write_constant(6.3, 124);
-    chunk.write_chunk(OpCode::Negate, 124);
-
-    chunk.write_constant(8.8, 124);
-    chunk.write_chunk(OpCode::Add, 124);
-
-    chunk.write_constant(5.0, 124);
-    chunk.write_chunk(OpCode::Multiply, 124);
-
-    chunk.write_chunk(OpCode::Return, 124);
-
-    vm.interpret(chunk).unwrap();
+    let args: Vec<String> = std::env::args().collect();
+    match args.len() {
+        1 => repl(),
+        2 => run_file(&args[1]),
+        _ => {
+            eprintln!("Usage: lox_rs [path]");
+            std::process::exit(64)
+        }
+    }
 }

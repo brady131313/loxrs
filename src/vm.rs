@@ -1,7 +1,7 @@
 use crate::{
     chunk::{Chunk, OpCode},
     stack::Stack,
-    value::Value,
+    value::Value, compiler::compile,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,10 +28,9 @@ impl Vm {
         }
     }
 
-    pub fn interpret(&mut self, chunk: Chunk) -> InterpretResult {
-        self.chunk = chunk;
-        self.ip = 0;
-        self.run()
+    pub fn interpret(&mut self, src: &str) -> InterpretResult {
+        compile(src);
+        Ok(())
     }
 
     fn read_byte(&mut self) -> OpCode {
