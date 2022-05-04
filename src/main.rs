@@ -1,9 +1,6 @@
-use std::{error::Error, path::Path};
+use std::path::Path;
 
-use lox_rs::{
-    chunk::{Chunk, OpCode},
-    vm::{InterpretError, Vm},
-};
+use lox_rs::vm::{InterpretError, Vm};
 use rustyline::{error::ReadlineError, Editor};
 
 const HISTORY: &'static str = ".lox_history.txt";
