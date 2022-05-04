@@ -64,13 +64,27 @@ impl Vm {
                     self.stack.push(constant);
                 }
                 OpCode::ConstantLong => todo!(),
+                OpCode::Add => self.binary_op(|a, b| a + b),
+                OpCode::Subtract => self.binary_op(|a, b| a - b),
+                OpCode::Multiply => self.binary_op(|a, b| a * b),
+                OpCode::Divide => self.binary_op(|a, b| a / b),
+                OpCode::Negate => {
+                    let constant = self.stack.pop().as_num().expect("num operator");
+                    self.stack.push(Value::Num(-constant));
+                }
                 OpCode::Return => {
                     let value = self.stack.pop();
                     println!("{value}");
-                    return Ok(())
-                },
-                code => unimplemented!("unimplemented opcode {code:?}"),
+                    return Ok(());
+                }
+                OpCode::Byte(b) => unimplemented!("unimplemented opcode {b}"),
             }
         }
+    }
+
+    fn binary_op<F: Fn(f64, f64) -> f64>(&mut self, f: F) {
+        let b = self.stack.pop().as_num().expect("num operator");
+        let a = self.stack.pop().as_num().expect("num operator");
+        self.stack.push(Value::Num(f(a, b)))
     }
 }

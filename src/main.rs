@@ -32,11 +32,16 @@ fn main() {
     let mut vm = Vm::new();
     let mut chunk = Chunk::new();
 
-    chunk.write_constant(5.0, 123);
-    chunk.write_constant(7.0, 123);
-    chunk.write_constant(6.0, 124);
+    chunk.write_constant(6.3, 124);
+    chunk.write_chunk(OpCode::Negate, 124);
+
+    chunk.write_constant(8.8, 124);
+    chunk.write_chunk(OpCode::Add, 124);
+
+    chunk.write_constant(5.0, 124);
+    chunk.write_chunk(OpCode::Multiply, 124);
+
     chunk.write_chunk(OpCode::Return, 124);
 
-    // chunk.disassemble_chunk("test chunk");
     vm.interpret(chunk).unwrap();
 }
