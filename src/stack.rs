@@ -66,15 +66,9 @@ mod tests {
     #[test]
     fn test_stack() {
         let mut stack: Stack<_, 5> = Stack::new();
-        println!("{stack:?}");
-        stack.push(5);
-        stack.push(5);
-        stack.push(5);
-        stack.push(5);
-        stack.push(5);
-        println!("{stack:?}");
-        stack.pop();
-        println!("{stack:?}");
-        panic!()
+        stack.push(1);
+        stack.push(2);
+        assert_eq!(stack.pop(), &2);
+        assert_eq!(stack.pop(), &1);
     }
 }

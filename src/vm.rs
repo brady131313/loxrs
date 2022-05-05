@@ -1,7 +1,8 @@
 use crate::{
     chunk::{Chunk, OpCode},
+    compiler::Compiler,
     stack::Stack,
-    value::Value, compiler::compile,
+    value::Value,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,7 +11,7 @@ pub enum InterpretError {
     Runtime,
 }
 
-pub type InterpretResult = Result<(), InterpretError>;
+pub type InterpretResult<T = ()> = Result<T, InterpretError>;
 
 const STACK_SIZE: usize = 256;
 pub struct Vm {
@@ -29,19 +30,23 @@ impl Vm {
     }
 
     pub fn interpret(&mut self, src: &str) -> InterpretResult {
-        compile(src);
-        Ok(())
+        let compiler = Compiler::new(src);
+
+        self.chunk = compiler.compile()?;
+        self.ip = 0;
+
+        self.run()
     }
 
-    fn read_byte(&mut self) -> OpCode {
+    fn read_byte(&mut self) -> Option<OpCode> {
         let instruction = self.chunk.get_op(self.ip);
         self.ip += 1;
 
         instruction
     }
 
-    fn read_constant(&mut self) -> &Value {
-        let byte = self.read_byte().as_byte().expect("expected byte");
+    fn read_constant(&mut self) -> Option<&Value> {
+        let byte = self.read_byte().and_then(|o| o.as_byte())?;
         self.chunk.get_constant(byte as usize)
     }
 
@@ -57,9 +62,9 @@ impl Vm {
                 self.chunk.disassemble_instruction(self.ip);
             }
 
-            match self.read_byte() {
+            match self.read_byte().ok_or(InterpretError::Compile)? {
                 OpCode::Constant => {
-                    let constant = *self.read_constant();
+                    let constant = *self.read_constant().ok_or(InterpretError::Compile)?;
                     self.stack.push(constant);
                 }
                 OpCode::ConstantLong => todo!(),

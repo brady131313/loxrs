@@ -58,6 +58,13 @@ pub enum TokenType {
     Eof,
 }
 
+impl Default for TokenType {
+    fn default() -> Self {
+        Self::Eof
+    }
+}
+
+#[derive(Default, Clone, Copy)]
 pub struct Token<'input> {
     pub typ: TokenType,
     pub src: &'input str,
@@ -81,7 +88,7 @@ impl<'input> Scanner<'input> {
         }
     }
 
-    pub fn scan_token(&mut self) -> Token {
+    pub fn scan_token(&mut self) -> Token<'input> {
         self.skip_whitespace();
         self.start = self.current;
 
@@ -140,7 +147,7 @@ impl<'input> Scanner<'input> {
         }
     }
 
-    fn string(&mut self) -> Token {
+    fn string(&mut self) -> Token<'input> {
         while self.peek() != '"' && !self.is_at_end() {
             if self.peek() == '\n' {
                 self.line += 1;
@@ -156,7 +163,7 @@ impl<'input> Scanner<'input> {
         }
     }
 
-    fn number(&mut self) -> Token {
+    fn number(&mut self) -> Token<'input> {
         while is_digit(self.peek()) {
             self.advance();
         }
@@ -173,7 +180,7 @@ impl<'input> Scanner<'input> {
         self.make_token(TokenType::Number)
     }
 
-    fn identifier(&mut self) -> Token {
+    fn identifier(&mut self) -> Token<'input> {
         while is_alpha(self.peek()) || is_digit(self.peek()) {
             self.advance();
         }
@@ -191,7 +198,7 @@ impl<'input> Scanner<'input> {
                 'a' => self.check_keyword(2, "lse", TokenType::False),
                 'o' => self.check_keyword(2, "r", TokenType::For),
                 'u' => self.check_keyword(2, "n", TokenType::Fun),
-                _ => TokenType::Identifier
+                _ => TokenType::Identifier,
             },
             'i' => self.check_keyword(1, "f", TokenType::If),
             'n' => self.check_keyword(1, "il", TokenType::Nil),
@@ -202,8 +209,8 @@ impl<'input> Scanner<'input> {
             't' => match self.char_at(self.start + 1) {
                 'h' => self.check_keyword(2, "is", TokenType::This),
                 'r' => self.check_keyword(2, "ue", TokenType::True),
-                _ => TokenType::Identifier
-            }
+                _ => TokenType::Identifier,
+            },
             'v' => self.check_keyword(1, "ar", TokenType::Var),
             'w' => self.check_keyword(1, "hile", TokenType::While),
             _ => TokenType::Identifier,
@@ -273,7 +280,7 @@ impl<'input> Scanner<'input> {
         true
     }
 
-    fn make_token(&self, typ: TokenType) -> Token {
+    fn make_token(&self, typ: TokenType) -> Token<'input> {
         Token {
             typ,
             src: &self.src[self.start..self.current],
@@ -281,7 +288,7 @@ impl<'input> Scanner<'input> {
         }
     }
 
-    fn error_token(&'input self, msg: &'input str) -> Token<'input> {
+    fn error_token(&'input self, msg: &'static str) -> Token<'static> {
         Token {
             typ: TokenType::Error,
             src: msg,
@@ -301,5 +308,67 @@ fn is_alpha(c: char) -> bool {
 impl<'input> Display for Token<'input> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:<10?} {}", self.typ, self.src)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scanner() {
+        let src = r#"(){},.-+;/*   ! != == = > >= < <= test "string" 5.0
+                     and class else false for fun if nil or print return
+                     super this true var while"#;
+        let mut scanner = Scanner::new(&src);
+
+        let tokens = [
+            // Single character
+            TokenType::LParen,
+            TokenType::RParen,
+            TokenType::LBrace,
+            TokenType::RBrace,
+            TokenType::Comma,
+            TokenType::Dot,
+            TokenType::Minus,
+            TokenType::Plus,
+            TokenType::Semicolon,
+            TokenType::Slash,
+            TokenType::Star,
+            // One or two character tokens
+            TokenType::Bang,
+            TokenType::BangEqual,
+            TokenType::EqualEqual,
+            TokenType::Equal,
+            TokenType::Greater,
+            TokenType::GreaterEqual,
+            TokenType::Less,
+            TokenType::LessEqual,
+            // Literals
+            TokenType::Identifier,
+            TokenType::String,
+            TokenType::Number,
+            // Keywords
+            TokenType::And,
+            TokenType::Class,
+            TokenType::Else,
+            TokenType::False,
+            TokenType::For,
+            TokenType::Fun,
+            TokenType::If,
+            TokenType::Nil,
+            TokenType::Or,
+            TokenType::Print,
+            TokenType::Return,
+            TokenType::Super,
+            TokenType::This,
+            TokenType::True,
+            TokenType::Var,
+            TokenType::While,
+        ];
+
+        for typ in tokens {
+            assert_eq!(scanner.scan_token().typ, typ);
+        }
     }
 }

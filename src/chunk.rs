@@ -78,12 +78,12 @@ impl Chunk {
         }
     }
 
-    pub fn get_byte(&self, offset: usize) -> u8 {
-        self.get_op(offset).as_byte().expect("Expected byte")
+    pub fn get_byte(&self, offset: usize) -> Option<u8> {
+        self.get_op(offset).and_then(|o| o.as_byte())
     }
 
-    pub fn get_op(&self, offset: usize) -> OpCode {
-        *self.code.get(offset).expect("Expected op at offset")
+    pub fn get_op(&self, offset: usize) -> Option<OpCode> {
+        self.code.get(offset).copied()
     }
 
     pub fn add_constant<V: Into<Value>>(&mut self, value: V) -> usize {
@@ -91,10 +91,8 @@ impl Chunk {
         self.constants.len() - 1
     }
 
-    pub fn get_constant(&self, offset: usize) -> &Value {
-        self.constants
-            .get(offset as usize)
-            .expect("expected value at index")
+    pub fn get_constant(&self, offset: usize) -> Option<&Value> {
+        self.constants.get(offset)
     }
 
     pub fn get_line(&self, instruction: usize) -> Option<usize> {
