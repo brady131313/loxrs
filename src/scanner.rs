@@ -64,7 +64,7 @@ impl Default for TokenType {
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
 pub struct Token<'input> {
     pub typ: TokenType,
     pub src: &'input str,
