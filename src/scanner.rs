@@ -9,7 +9,7 @@ macro_rules! alpha {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
     // Single character
-    LParen,
+    LParen = 0,
     RParen,
     LBrace,
     RBrace,

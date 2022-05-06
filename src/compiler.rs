@@ -5,7 +5,6 @@ use crate::{
     vm::{InterpretError, InterpretResult},
 };
 
-#[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Precedence {
     None,
@@ -37,50 +36,96 @@ impl Precedence {
             Precedence::Primary => unreachable!(),
         }
     }
+}
 
-    pub fn from_token(typ: TokenType) -> Self {
-        match typ {
-            TokenType::LParen => Precedence::None,
-            TokenType::RParen => Precedence::None,
-            TokenType::LBrace => Precedence::None,
-            TokenType::RBrace => Precedence::None,
-            TokenType::Comma => Precedence::None,
-            TokenType::Dot => Precedence::None,
-            TokenType::Minus => Precedence::Term,
-            TokenType::Plus => Precedence::Term,
-            TokenType::Semicolon => Precedence::None,
-            TokenType::Slash => Precedence::Factor,
-            TokenType::Star => Precedence::Factor,
-            TokenType::Bang => Precedence::None,
-            TokenType::BangEqual => Precedence::None,
-            TokenType::Equal => Precedence::None,
-            TokenType::EqualEqual => Precedence::None,
-            TokenType::Greater => Precedence::None,
-            TokenType::GreaterEqual => Precedence::None,
-            TokenType::Less => Precedence::None,
-            TokenType::LessEqual => Precedence::None,
-            TokenType::Identifier => Precedence::None,
-            TokenType::String => Precedence::None,
-            TokenType::Number => Precedence::None,
-            TokenType::And => Precedence::None,
-            TokenType::Class => Precedence::None,
-            TokenType::Else => Precedence::None,
-            TokenType::False => Precedence::None,
-            TokenType::For => Precedence::None,
-            TokenType::Fun => Precedence::None,
-            TokenType::If => Precedence::None,
-            TokenType::Nil => Precedence::None,
-            TokenType::Or => Precedence::None,
-            TokenType::Print => Precedence::None,
-            TokenType::Return => Precedence::None,
-            TokenType::Super => Precedence::None,
-            TokenType::This => Precedence::None,
-            TokenType::True => Precedence::None,
-            TokenType::Var => Precedence::None,
-            TokenType::While => Precedence::None,
-            TokenType::Error => Precedence::None,
-            TokenType::Eof => Precedence::None,
+type Rule<'a, 'b> = fn(&'a mut Compiler<'b>) -> ();
+
+#[derive(Clone, Copy)]
+enum RuleType {
+    Prefix,
+    Infix,
+    Precedence,
+}
+
+enum ParseRule<'a, 'b> {
+    Rule(Option<Rule<'a, 'b>>),
+    Precedence(Precedence),
+}
+
+impl<'a, 'b> ParseRule<'a, 'b> {
+    pub fn as_rule(self) -> Option<Rule<'a, 'b>> {
+        if let ParseRule::Rule(rule) = self {
+            rule
+        } else {
+            unimplemented!()
         }
+    }
+
+    pub fn as_precedence(self) -> Precedence {
+        if let ParseRule::Precedence(prec) = self {
+            prec
+        } else {
+            unimplemented!()
+        }
+    }
+}
+
+fn get_rule<'a, 'b>(typ: TokenType, rule_type: RuleType) -> ParseRule<'a, 'b> {
+    macro_rules! rule {
+        ($prefix:expr, $infix:expr, $precedence:expr) => {
+            match rule_type {
+                RuleType::Prefix => ParseRule::Rule($prefix),
+                RuleType::Infix => ParseRule::Rule($infix),
+                RuleType::Precedence => ParseRule::Precedence($precedence),
+            }
+        };
+    }
+
+    match typ {
+        TokenType::LParen => rule!(Some(Compiler::grouping), None, Precedence::None),
+        TokenType::RParen => rule!(None, None, Precedence::None),
+        TokenType::LBrace => rule!(None, None, Precedence::None),
+        TokenType::RBrace => rule!(None, None, Precedence::None),
+        TokenType::Comma => rule!(None, None, Precedence::None),
+        TokenType::Dot => rule!(None, None, Precedence::None),
+        TokenType::Minus => rule!(
+            Some(Compiler::unary),
+            Some(Compiler::binary),
+            Precedence::Term
+        ),
+        TokenType::Plus => rule!(None, Some(Compiler::binary), Precedence::Term),
+        TokenType::Semicolon => rule!(None, None, Precedence::None),
+        TokenType::Slash => rule!(None, Some(Compiler::binary), Precedence::Factor),
+        TokenType::Star => rule!(None, Some(Compiler::binary), Precedence::Factor),
+        TokenType::Bang => rule!(None, None, Precedence::None),
+        TokenType::BangEqual => rule!(None, None, Precedence::None),
+        TokenType::Equal => rule!(None, None, Precedence::None),
+        TokenType::EqualEqual => rule!(None, None, Precedence::None),
+        TokenType::Greater => rule!(None, None, Precedence::None),
+        TokenType::GreaterEqual => rule!(None, None, Precedence::None),
+        TokenType::Less => rule!(None, None, Precedence::None),
+        TokenType::LessEqual => rule!(None, None, Precedence::None),
+        TokenType::Identifier => rule!(None, None, Precedence::None),
+        TokenType::String => rule!(None, None, Precedence::None),
+        TokenType::Number => rule!(Some(Compiler::number), None, Precedence::None),
+        TokenType::And => rule!(None, None, Precedence::None),
+        TokenType::Class => rule!(None, None, Precedence::None),
+        TokenType::Else => rule!(None, None, Precedence::None),
+        TokenType::False => rule!(None, None, Precedence::None),
+        TokenType::For => rule!(None, None, Precedence::None),
+        TokenType::Fun => rule!(None, None, Precedence::None),
+        TokenType::If => rule!(None, None, Precedence::None),
+        TokenType::Nil => rule!(None, None, Precedence::None),
+        TokenType::Or => rule!(None, None, Precedence::None),
+        TokenType::Print => rule!(None, None, Precedence::None),
+        TokenType::Return => rule!(None, None, Precedence::None),
+        TokenType::Super => rule!(None, None, Precedence::None),
+        TokenType::This => rule!(None, None, Precedence::None),
+        TokenType::True => rule!(None, None, Precedence::None),
+        TokenType::Var => rule!(None, None, Precedence::None),
+        TokenType::While => rule!(None, None, Precedence::None),
+        TokenType::Error => rule!(None, None, Precedence::None),
+        TokenType::Eof => rule!(None, None, Precedence::None),
     }
 }
 
@@ -122,108 +167,22 @@ impl<'input> Compiler<'input> {
 
     fn parse_precedence(&mut self, precedence: Precedence) {
         self.advance();
-        match self.prefix_rule(self.parser.previous.typ) {
+        match get_rule(self.parser.previous.typ, RuleType::Prefix).as_rule() {
             Some(rule) => rule(self),
             None => {
                 self.error("Expect expression.");
                 return;
             }
-        }
+        };
 
-        while precedence <= Precedence::from_token(self.parser.current.typ) {
+        while precedence <= get_rule(self.parser.current.typ, RuleType::Precedence).as_precedence()
+        {
             self.advance();
-            let rule = self.infix_rule(self.parser.previous.typ).expect("infix op");
-            rule(self);
-        }
-    }
+            let rule = get_rule(self.parser.previous.typ, RuleType::Infix)
+                .as_rule()
+                .expect("an infix parse rule");
 
-    fn prefix_rule(&self, typ: TokenType) -> Option<fn(&mut Self) -> ()> {
-        match typ {
-            TokenType::LParen => Some(Compiler::grouping),
-            TokenType::RParen => None,
-            TokenType::LBrace => None,
-            TokenType::RBrace => None,
-            TokenType::Comma => None,
-            TokenType::Dot => None,
-            TokenType::Minus => Some(Compiler::unary),
-            TokenType::Plus => None,
-            TokenType::Semicolon => None,
-            TokenType::Slash => None,
-            TokenType::Star => None,
-            TokenType::Bang => None,
-            TokenType::BangEqual => None,
-            TokenType::Equal => None,
-            TokenType::EqualEqual => None,
-            TokenType::Greater => None,
-            TokenType::GreaterEqual => None,
-            TokenType::Less => None,
-            TokenType::LessEqual => None,
-            TokenType::Identifier => None,
-            TokenType::String => None,
-            TokenType::Number => Some(Compiler::number),
-            TokenType::And => None,
-            TokenType::Class => None,
-            TokenType::Else => None,
-            TokenType::False => None,
-            TokenType::For => None,
-            TokenType::Fun => None,
-            TokenType::If => None,
-            TokenType::Nil => None,
-            TokenType::Or => None,
-            TokenType::Print => None,
-            TokenType::Return => None,
-            TokenType::Super => None,
-            TokenType::This => None,
-            TokenType::True => None,
-            TokenType::Var => None,
-            TokenType::While => None,
-            TokenType::Error => None,
-            TokenType::Eof => None,
-        }
-    }
-
-    fn infix_rule(&self, typ: TokenType) -> Option<fn(&mut Self) -> ()> {
-        match typ {
-            TokenType::LParen => None,
-            TokenType::RParen => None,
-            TokenType::LBrace => None,
-            TokenType::RBrace => None,
-            TokenType::Comma => None,
-            TokenType::Dot => None,
-            TokenType::Minus => Some(Compiler::binary),
-            TokenType::Plus => Some(Compiler::binary),
-            TokenType::Semicolon => None,
-            TokenType::Slash => Some(Compiler::binary),
-            TokenType::Star => Some(Compiler::binary),
-            TokenType::Bang => None,
-            TokenType::BangEqual => None,
-            TokenType::Equal => None,
-            TokenType::EqualEqual => None,
-            TokenType::Greater => None,
-            TokenType::GreaterEqual => None,
-            TokenType::Less => None,
-            TokenType::LessEqual => None,
-            TokenType::Identifier => None,
-            TokenType::String => None,
-            TokenType::Number => None,
-            TokenType::And => None,
-            TokenType::Class => None,
-            TokenType::Else => None,
-            TokenType::False => None,
-            TokenType::For => None,
-            TokenType::Fun => None,
-            TokenType::If => None,
-            TokenType::Nil => None,
-            TokenType::Or => None,
-            TokenType::Print => None,
-            TokenType::Return => None,
-            TokenType::Super => None,
-            TokenType::This => None,
-            TokenType::True => None,
-            TokenType::Var => None,
-            TokenType::While => None,
-            TokenType::Error => None,
-            TokenType::Eof => None,
+            rule(self)
         }
     }
 
@@ -253,7 +212,7 @@ impl<'input> Compiler<'input> {
 
     fn binary(&mut self) {
         let typ = self.parser.previous.typ;
-        let precedence = Precedence::from_token(typ);
+        let precedence = get_rule(typ, RuleType::Precedence).as_precedence();
         self.parse_precedence(precedence.next());
 
         match typ {
@@ -266,7 +225,12 @@ impl<'input> Compiler<'input> {
     }
 
     fn end_compiler(&mut self) {
-        self.emit_return()
+        self.emit_return();
+
+        #[cfg(feature = "debug_print_code")]
+        if !self.parser.had_error {
+            self.compiling_chunk.disassemble_chunk("code")
+        }
     }
 
     fn emit_byte(&mut self, byte: OpCode) {
