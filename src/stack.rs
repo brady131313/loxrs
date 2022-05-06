@@ -22,6 +22,11 @@ impl<T: Copy + Default, const N: usize> Stack<T, N> {
         &self.data[self.top]
     }
 
+    pub fn peek(&self, distance: usize) -> Option<&T> {
+        let idx = self.top.checked_sub(distance + 1)?;
+        self.data.get(idx)
+    }
+
     pub fn reset(&mut self) {
         self.top = 0
     }
@@ -70,5 +75,11 @@ mod tests {
         stack.push(2);
         assert_eq!(stack.pop(), &2);
         assert_eq!(stack.pop(), &1);
+
+        assert!(stack.peek(0).is_none());
+        stack.push(5);
+        stack.push(3);
+        assert_eq!(stack.peek(0).unwrap(), &3);
+        assert_eq!(stack.peek(1).unwrap(), &5);
     }
 }

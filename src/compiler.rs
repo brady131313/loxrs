@@ -111,17 +111,17 @@ fn get_rule<'a, 'b>(typ: TokenType, rule_type: RuleType) -> ParseRule<'a, 'b> {
         TokenType::And => rule!(None, None, Precedence::None),
         TokenType::Class => rule!(None, None, Precedence::None),
         TokenType::Else => rule!(None, None, Precedence::None),
-        TokenType::False => rule!(None, None, Precedence::None),
+        TokenType::False => rule!(Some(Compiler::literal), None, Precedence::None),
         TokenType::For => rule!(None, None, Precedence::None),
         TokenType::Fun => rule!(None, None, Precedence::None),
         TokenType::If => rule!(None, None, Precedence::None),
-        TokenType::Nil => rule!(None, None, Precedence::None),
+        TokenType::Nil => rule!(Some(Compiler::literal), None, Precedence::None),
         TokenType::Or => rule!(None, None, Precedence::None),
         TokenType::Print => rule!(None, None, Precedence::None),
         TokenType::Return => rule!(None, None, Precedence::None),
         TokenType::Super => rule!(None, None, Precedence::None),
         TokenType::This => rule!(None, None, Precedence::None),
-        TokenType::True => rule!(None, None, Precedence::None),
+        TokenType::True => rule!(Some(Compiler::literal), None, Precedence::None),
         TokenType::Var => rule!(None, None, Precedence::None),
         TokenType::While => rule!(None, None, Precedence::None),
         TokenType::Error => rule!(None, None, Precedence::None),
@@ -224,12 +224,21 @@ impl<'input> Compiler<'input> {
         }
     }
 
+    fn literal(&mut self) {
+        match self.parser.previous.typ {
+            TokenType::False => self.emit_byte(OpCode::False),
+            TokenType::True => self.emit_byte(OpCode::True),
+            TokenType::Nil => self.emit_byte(OpCode::Nil),
+            _ => unreachable!()
+        }
+    }
+
     fn end_compiler(&mut self) {
         self.emit_return();
 
         #[cfg(feature = "debug_print_code")]
         if !self.parser.had_error {
-            self.compiling_chunk.disassemble_chunk("code")
+            self.compiling_chunk.disassemble_chunk("code");
         }
     }
 

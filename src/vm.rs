@@ -68,6 +68,9 @@ impl Vm {
                     self.stack.push(constant);
                 }
                 OpCode::ConstantLong => todo!(),
+                OpCode::Nil => self.stack.push(Value::Nil),
+                OpCode::True => self.stack.push(Value::Bool(true)),
+                OpCode::False => self.stack.push(Value::Bool(false)),
                 OpCode::Add => self.binary_op(|a, b| a + b),
                 OpCode::Subtract => self.binary_op(|a, b| a - b),
                 OpCode::Multiply => self.binary_op(|a, b| a * b),
@@ -90,5 +93,14 @@ impl Vm {
         let b = self.stack.pop().as_num().expect("num operator");
         let a = self.stack.pop().as_num().expect("num operator");
         self.stack.push(Value::Num(f(a, b)))
+    }
+
+    fn runtime_error(&mut self, msg: &str) {
+        println!("{msg}");
+
+        let line = self.chunk.get_line(self.ip - 1).expect("expected line");
+        eprintln!("[line {line}] in script");
+        self.stack.reset()
+
     }
 }

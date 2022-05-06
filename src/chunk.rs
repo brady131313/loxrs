@@ -7,6 +7,9 @@ use crate::{
 pub enum OpCode {
     Constant,
     ConstantLong,
+    Nil,
+    True,
+    False,
     Add,
     Subtract,
     Multiply,
@@ -96,6 +99,7 @@ impl Chunk {
     }
 
     pub fn get_line(&self, instruction: usize) -> Option<usize> {
+        println!("{:?}", self.lines);
         let idx = self
             .lines
             .binary_search_by(|l| l.offset.cmp(&instruction))
@@ -127,6 +131,9 @@ impl Chunk {
             OpCode::Return => simple_instruction("RETURN", offset),
             OpCode::Constant => constant_instruction("CONSTANT", self, offset),
             OpCode::ConstantLong => constant_long_instruction("CONSTANT_LONG", self, offset),
+            OpCode::Nil => simple_instruction("NIL", offset),
+            OpCode::True => simple_instruction("TRUE", offset),
+            OpCode::False => simple_instruction("FALSE", offset),
             OpCode::Add => simple_instruction("ADD", offset),
             OpCode::Subtract => simple_instruction("SUBTRACT", offset),
             OpCode::Multiply => simple_instruction("MULTIPLY", offset),

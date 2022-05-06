@@ -2,7 +2,9 @@ use std::fmt::Display;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Value {
-    Num(f64)
+    Nil,
+    Bool(bool),
+    Num(f64),
 }
 
 impl Value {
@@ -30,7 +32,9 @@ impl Default for Value {
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Num(n) => write!(f, "{n}")
+            Self::Nil => write!(f, "nil"),
+            Self::Bool(b) => write!(f, "{b}"),
+            Self::Num(n) => write!(f, "{n}"),
         }
     }
 }
