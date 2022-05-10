@@ -1,5 +1,6 @@
 use crate::{
     debug::{constant_instruction, constant_long_instruction, simple_instruction},
+    object::StringInterner,
     value::Value,
 };
 
@@ -49,6 +50,7 @@ pub struct Chunk {
     code: Vec<OpCode>,
     constants: Vec<Value>,
     lines: Vec<LineStart>,
+    pub interner: StringInterner,
 }
 
 impl Chunk {
@@ -56,6 +58,7 @@ impl Chunk {
         Self {
             code: Vec::new(),
             constants: Vec::new(),
+            interner: StringInterner::new(),
             lines: Vec::new(),
         }
     }

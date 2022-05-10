@@ -1,7 +1,6 @@
 use crate::{
     chunk::{Chunk, OpCode},
     compiler::Compiler,
-    object::Object,
     stack::Stack,
     value::Value,
 };
@@ -19,7 +18,6 @@ pub struct Vm {
     chunk: Chunk,
     ip: usize,
     stack: Stack<Value, STACK_SIZE>,
-    objects: Vec<Object>,
 }
 
 impl Vm {
@@ -28,14 +26,13 @@ impl Vm {
             chunk: Chunk::new(),
             ip: 0,
             stack: Stack::new(),
-            objects: Vec::new(),
         }
     }
 
     pub fn interpret(&mut self, src: &str) -> InterpretResult {
         let compiler = Compiler::new(src);
 
-        let (chunk, new_objs) = compiler.compile()?;
+        let chunk = compiler.compile()?;
         self.chunk = chunk;
         self.ip = 0;
 
@@ -82,7 +79,30 @@ impl Vm {
                 }
                 OpCode::Greater => self.binary_op(|a, b| a > b)?,
                 OpCode::Less => self.binary_op(|a, b| a < b)?,
-                OpCode::Add => self.binary_op(|a, b| a + b)?,
+                OpCode::Add => {
+                    match (self.stack.peek(0), self.stack.peek(1)) {
+                        (Some(Value::String(..)), Some(Value::String(..))) => {
+                            let b_intered = self.stack.pop().as_str().unwrap();
+                            let b = self.chunk.interner.get(b_intered);
+
+                            let a_intered = self.stack.pop().as_str().unwrap();
+                            let a = self.chunk.interner.get(a_intered);
+                            
+                            let concated = format!("{a}{b}");
+                            let res = self.chunk.interner.intern(concated);
+                            self.stack.push(Value::String(res))
+                        },
+                        (Some(Value::Num(..)), Some(Value::Num(..))) => {
+                            let b = self.stack.pop().as_num().unwrap();
+                            let a = self.stack.pop().as_num().unwrap();
+                            self.stack.push(Value::Num(a + b));
+                        },
+                        _ => {
+                            self.runtime_error("Operands must be two numbers or two strings.");
+                            return Err(InterpretError::Runtime)
+                        }
+                    }
+                },
                 OpCode::Subtract => self.binary_op(|a, b| a - b)?,
                 OpCode::Multiply => self.binary_op(|a, b| a * b)?,
                 OpCode::Divide => self.binary_op(|a, b| a / b)?,
@@ -100,8 +120,8 @@ impl Vm {
                     }
                 }
                 OpCode::Return => {
-                    let value = self.stack.pop();
-                    println!("{value}");
+                    let value = *self.stack.pop();
+                    self.print_val(value);
                     return Ok(());
                 }
                 OpCode::Byte(b) => unimplemented!("unimplemented opcode {b}"),
@@ -133,5 +153,14 @@ impl Vm {
         let line = self.chunk.get_line(self.ip - 1);
         eprintln!("[line {line}] in script");
         self.stack.reset()
+    }
+
+    fn print_val(&self, val: Value) {
+        if let Value::String(istr) = val {
+            let str = self.chunk.interner.get(istr);
+            println!("\"{str}\"")
+        } else {
+            println!("{val}")
+        }
     }
 }

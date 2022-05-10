@@ -1,6 +1,5 @@
 use crate::{
     chunk::{Chunk, OpCode},
-    object::Object,
     scanner::{Scanner, Token, TokenType},
     value::Value,
     vm::{InterpretError, InterpretResult},
@@ -107,7 +106,7 @@ fn get_rule<'a, 'b>(typ: TokenType, rule_type: RuleType) -> ParseRule<'a, 'b> {
         TokenType::Less => rule!(None, Some(Compiler::binary), Precedence::Comparison),
         TokenType::LessEqual => rule!(None, Some(Compiler::binary), Precedence::Comparison),
         TokenType::Identifier => rule!(None, None, Precedence::None),
-        TokenType::String => rule!(None, None, Precedence::None),
+        TokenType::String => rule!(Some(Compiler::string), None, Precedence::None),
         TokenType::Number => rule!(Some(Compiler::number), None, Precedence::None),
         TokenType::And => rule!(None, None, Precedence::None),
         TokenType::Class => rule!(None, None, Precedence::None),
@@ -142,7 +141,6 @@ pub struct Compiler<'input> {
     scanner: Scanner<'input>,
     parser: Parser<'input>,
     compiling_chunk: Chunk,
-    compiling_objs: Vec<Object>,
 }
 
 impl<'input> Compiler<'input> {
@@ -151,11 +149,10 @@ impl<'input> Compiler<'input> {
             scanner: Scanner::new(src),
             parser: Parser::default(),
             compiling_chunk: Chunk::new(),
-            compiling_objs: Vec::new()
         }
     }
 
-    pub fn compile(mut self) -> InterpretResult<(Chunk, Vec<Object>)> {
+    pub fn compile(mut self) -> InterpretResult<Chunk> {
         self.advance();
         self.expression();
         self.consume(TokenType::Eof, "Expect end of expression.");
@@ -164,7 +161,7 @@ impl<'input> Compiler<'input> {
         if self.parser.had_error {
             Err(InterpretError::Compile)
         } else {
-            Ok((self.compiling_chunk, self.compiling_objs))
+            Ok(self.compiling_chunk)
         }
     }
 
@@ -196,6 +193,12 @@ impl<'input> Compiler<'input> {
     fn number(&mut self) {
         let value: f64 = self.parser.previous.src.parse().expect("a number");
         self.emit_constant(Value::Num(value))
+    }
+
+    fn string(&mut self) {
+        let str = self.parser.previous.src;
+        let istr = self.compiling_chunk.interner.intern(&str[1..str.len() - 1]);
+        self.emit_constant(Value::String(istr))
     }
 
     fn grouping(&mut self) {

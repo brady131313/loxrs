@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::object::Object;
+use crate::object::IString;
 
 const FLOAT_TOL: f64 = 1e-9;
 
@@ -9,13 +9,21 @@ pub enum Value {
     Nil,
     Bool(bool),
     Num(f64),
-    // Obj(&'a Object)
+    String(IString),
 }
 
 impl Value {
     pub fn as_num(&self) -> Option<f64> {
         if let Self::Num(n) = self {
             Some(*n)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_str(&self) -> Option<IString> {
+        if let Self::String(s) = self {
+            Some(*s)
         } else {
             None
         }
@@ -30,7 +38,8 @@ impl Value {
             (Value::Nil, _) => true,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Num(a), Value::Num(b)) => (a - b) < FLOAT_TOL,
-            _ => false
+            (Value::String(a), Value::String(b)) => a == b,
+            _ => false,
         }
     }
 }
@@ -59,7 +68,7 @@ impl Display for Value {
             Self::Nil => write!(f, "nil"),
             Self::Bool(b) => write!(f, "{b}"),
             Self::Num(n) => write!(f, "{n}"),
-            // Self::Obj(o) => write!(f, "{o}")
+            Self::String(s) => write!(f, "{s:?}"),
         }
     }
 }
