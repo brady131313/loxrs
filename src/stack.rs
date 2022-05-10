@@ -12,8 +12,8 @@ impl<T: Copy + Default, const N: usize> Stack<T, N> {
         }
     }
 
-    pub fn push(&mut self, value: T) {
-        self.data[self.top] = value;
+    pub fn push<V: Into<T>>(&mut self, value: V) {
+        self.data[self.top] = value.into();
         self.top += 1
     }
 
@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn test_stack() {
-        let mut stack: Stack<_, 5> = Stack::new();
+        let mut stack: Stack<i32, 5> = Stack::new();
         stack.push(1);
         stack.push(2);
         assert_eq!(stack.pop(), &2);

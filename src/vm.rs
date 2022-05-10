@@ -71,13 +71,29 @@ impl Vm {
                 OpCode::Nil => self.stack.push(Value::Nil),
                 OpCode::True => self.stack.push(Value::Bool(true)),
                 OpCode::False => self.stack.push(Value::Bool(false)),
-                OpCode::Add => self.binary_op(|a, b| a + b),
-                OpCode::Subtract => self.binary_op(|a, b| a - b),
-                OpCode::Multiply => self.binary_op(|a, b| a * b),
-                OpCode::Divide => self.binary_op(|a, b| a / b),
+                OpCode::Equal => {
+                    let b = *self.stack.pop();
+                    let a = *self.stack.pop();
+                    self.stack.push(Value::Bool(a.eq(&b)));
+                }
+                OpCode::Greater => self.binary_op(|a, b| a > b)?,
+                OpCode::Less => self.binary_op(|a, b| a < b)?,
+                OpCode::Add => self.binary_op(|a, b| a + b)?,
+                OpCode::Subtract => self.binary_op(|a, b| a - b)?,
+                OpCode::Multiply => self.binary_op(|a, b| a * b)?,
+                OpCode::Divide => self.binary_op(|a, b| a / b)?,
+                OpCode::Not => {
+                    let val = self.stack.pop().is_falsey();
+                    self.stack.push(Value::Bool(val))
+                }
                 OpCode::Negate => {
-                    let constant = self.stack.pop().as_num().expect("num operator");
-                    self.stack.push(Value::Num(-constant));
+                    if let Some(Value::Num(..)) = self.stack.peek(0) {
+                        let constant = self.stack.pop().as_num().unwrap();
+                        self.stack.push(Value::Num(-constant))
+                    } else {
+                        self.runtime_error("Operand must be a number.");
+                        return Err(InterpretError::Runtime);
+                    }
                 }
                 OpCode::Return => {
                     let value = self.stack.pop();
@@ -89,18 +105,29 @@ impl Vm {
         }
     }
 
-    fn binary_op<F: Fn(f64, f64) -> f64>(&mut self, f: F) {
-        let b = self.stack.pop().as_num().expect("num operator");
-        let a = self.stack.pop().as_num().expect("num operator");
-        self.stack.push(Value::Num(f(a, b)))
+    fn binary_op<F, V>(&mut self, f: F) -> InterpretResult
+    where
+        F: Fn(f64, f64) -> V,
+        V: Into<Value>,
+    {
+        if let (Some(Value::Num(..)), Some(Value::Num(..))) =
+            (self.stack.peek(0), self.stack.peek(1))
+        {
+            let b = self.stack.pop().as_num().unwrap();
+            let a = self.stack.pop().as_num().unwrap();
+            self.stack.push(f(a, b));
+            Ok(())
+        } else {
+            self.runtime_error("Operands must be numbers.");
+            return Err(InterpretError::Runtime);
+        }
     }
 
     fn runtime_error(&mut self, msg: &str) {
         println!("{msg}");
 
-        let line = self.chunk.get_line(self.ip - 1).expect("expected line");
+        let line = self.chunk.get_line(self.ip - 1);
         eprintln!("[line {line}] in script");
         self.stack.reset()
-
     }
 }

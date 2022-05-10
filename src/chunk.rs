@@ -10,10 +10,14 @@ pub enum OpCode {
     Nil,
     True,
     False,
+    Equal,
+    Greater,
+    Less,
     Add,
     Subtract,
     Multiply,
     Divide,
+    Not,
     Negate,
     Return,
     Byte(u8),
@@ -98,14 +102,23 @@ impl Chunk {
         self.constants.get(offset)
     }
 
-    pub fn get_line(&self, instruction: usize) -> Option<usize> {
-        println!("{:?}", self.lines);
-        let idx = self
-            .lines
-            .binary_search_by(|l| l.offset.cmp(&instruction))
-            .ok()?;
+    pub fn get_line(&self, instruction: usize) -> usize {
+        // println!("{:?}", self.lines);
 
-        Some(self.lines[idx].line)
+        let mut start = 0;
+        let mut end = self.lines.len();
+
+        loop {
+            let mid = (start + end) / 2;
+            let line = &self.lines[mid];
+            if instruction < line.offset {
+                end = mid - 1;
+            } else if mid == self.lines.len() - 1 || instruction < self.lines[mid + 1].offset {
+                return line.line;
+            } else {
+                start = mid + 1;
+            }
+        }
     }
 
     pub fn disassemble_chunk(&self, name: &str) {
@@ -124,7 +137,7 @@ impl Chunk {
         if offset > 0 && line == self.get_line(offset - 1) {
             print!("\t| ")
         } else {
-            print!("{:4} ", line.expect("A line number from offset"))
+            print!("{:4} ", line)
         }
 
         match self.code[offset] {
@@ -134,10 +147,14 @@ impl Chunk {
             OpCode::Nil => simple_instruction("NIL", offset),
             OpCode::True => simple_instruction("TRUE", offset),
             OpCode::False => simple_instruction("FALSE", offset),
+            OpCode::Equal => simple_instruction("EQUAL", offset),
+            OpCode::Greater => simple_instruction("GREATER", offset),
+            OpCode::Less => simple_instruction("LESS", offset),
             OpCode::Add => simple_instruction("ADD", offset),
             OpCode::Subtract => simple_instruction("SUBTRACT", offset),
             OpCode::Multiply => simple_instruction("MULTIPLY", offset),
             OpCode::Divide => simple_instruction("DIVIDE", offset),
+            OpCode::Not => simple_instruction("NOT", offset),
             OpCode::Negate => simple_instruction("NEGATE", offset),
             OpCode::Byte(b) => {
                 println!("Unknown opcode {b}");

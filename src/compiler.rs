@@ -97,14 +97,14 @@ fn get_rule<'a, 'b>(typ: TokenType, rule_type: RuleType) -> ParseRule<'a, 'b> {
         TokenType::Semicolon => rule!(None, None, Precedence::None),
         TokenType::Slash => rule!(None, Some(Compiler::binary), Precedence::Factor),
         TokenType::Star => rule!(None, Some(Compiler::binary), Precedence::Factor),
-        TokenType::Bang => rule!(None, None, Precedence::None),
-        TokenType::BangEqual => rule!(None, None, Precedence::None),
+        TokenType::Bang => rule!(Some(Compiler::unary), None, Precedence::None),
+        TokenType::BangEqual => rule!(None, Some(Compiler::binary), Precedence::Equality),
         TokenType::Equal => rule!(None, None, Precedence::None),
-        TokenType::EqualEqual => rule!(None, None, Precedence::None),
-        TokenType::Greater => rule!(None, None, Precedence::None),
-        TokenType::GreaterEqual => rule!(None, None, Precedence::None),
-        TokenType::Less => rule!(None, None, Precedence::None),
-        TokenType::LessEqual => rule!(None, None, Precedence::None),
+        TokenType::EqualEqual => rule!(None, Some(Compiler::binary), Precedence::Equality),
+        TokenType::Greater => rule!(None, Some(Compiler::binary), Precedence::Comparison),
+        TokenType::GreaterEqual => rule!(None, Some(Compiler::binary), Precedence::Comparison),
+        TokenType::Less => rule!(None, Some(Compiler::binary), Precedence::Comparison),
+        TokenType::LessEqual => rule!(None, Some(Compiler::binary), Precedence::Comparison),
         TokenType::Identifier => rule!(None, None, Precedence::None),
         TokenType::String => rule!(None, None, Precedence::None),
         TokenType::Number => rule!(Some(Compiler::number), None, Precedence::None),
@@ -206,6 +206,7 @@ impl<'input> Compiler<'input> {
 
         match typ {
             TokenType::Minus => self.emit_byte(OpCode::Negate),
+            TokenType::Bang => self.emit_byte(OpCode::Not),
             _ => unreachable!(),
         }
     }
@@ -216,6 +217,12 @@ impl<'input> Compiler<'input> {
         self.parse_precedence(precedence.next());
 
         match typ {
+            TokenType::BangEqual => self.emit_bytes(OpCode::Equal, OpCode::Not),
+            TokenType::EqualEqual => self.emit_byte(OpCode::Equal),
+            TokenType::Greater => self.emit_byte(OpCode::Greater),
+            TokenType::GreaterEqual => self.emit_bytes(OpCode::Less, OpCode::Not),
+            TokenType::Less => self.emit_byte(OpCode::Less),
+            TokenType::LessEqual => self.emit_bytes(OpCode::Greater, OpCode::Not),
             TokenType::Plus => self.emit_byte(OpCode::Add),
             TokenType::Minus => self.emit_byte(OpCode::Subtract),
             TokenType::Star => self.emit_byte(OpCode::Multiply),
@@ -229,7 +236,7 @@ impl<'input> Compiler<'input> {
             TokenType::False => self.emit_byte(OpCode::False),
             TokenType::True => self.emit_byte(OpCode::True),
             TokenType::Nil => self.emit_byte(OpCode::Nil),
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
