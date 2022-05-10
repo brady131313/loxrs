@@ -1,5 +1,6 @@
 use crate::{
     chunk::{Chunk, OpCode},
+    object::Object,
     scanner::{Scanner, Token, TokenType},
     value::Value,
     vm::{InterpretError, InterpretResult},
@@ -141,6 +142,7 @@ pub struct Compiler<'input> {
     scanner: Scanner<'input>,
     parser: Parser<'input>,
     compiling_chunk: Chunk,
+    compiling_objs: Vec<Object>,
 }
 
 impl<'input> Compiler<'input> {
@@ -149,10 +151,11 @@ impl<'input> Compiler<'input> {
             scanner: Scanner::new(src),
             parser: Parser::default(),
             compiling_chunk: Chunk::new(),
+            compiling_objs: Vec::new()
         }
     }
 
-    pub fn compile(mut self) -> InterpretResult<Chunk> {
+    pub fn compile(mut self) -> InterpretResult<(Chunk, Vec<Object>)> {
         self.advance();
         self.expression();
         self.consume(TokenType::Eof, "Expect end of expression.");
@@ -161,7 +164,7 @@ impl<'input> Compiler<'input> {
         if self.parser.had_error {
             Err(InterpretError::Compile)
         } else {
-            Ok(self.compiling_chunk)
+            Ok((self.compiling_chunk, self.compiling_objs))
         }
     }
 
