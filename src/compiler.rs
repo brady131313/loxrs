@@ -1,5 +1,6 @@
 use crate::{
     chunk::{Chunk, OpCode},
+    object::StringInterner,
     scanner::{Scanner, Token, TokenType},
     value::Value,
     vm::{InterpretError, InterpretResult},
@@ -38,7 +39,7 @@ impl Precedence {
     }
 }
 
-type Rule<'a, 'b> = fn(&'a mut Compiler<'b>) -> ();
+type Rule<'a, 'input, 'vm> = fn(&'a mut Compiler<'input, 'vm>) -> ();
 
 #[derive(Clone, Copy)]
 enum RuleType {
@@ -47,13 +48,13 @@ enum RuleType {
     Precedence,
 }
 
-enum ParseRule<'a, 'b> {
-    Rule(Option<Rule<'a, 'b>>),
+enum ParseRule<'a, 'input, 'vm> {
+    Rule(Option<Rule<'a, 'input, 'vm>>),
     Precedence(Precedence),
 }
 
-impl<'a, 'b> ParseRule<'a, 'b> {
-    pub fn as_rule(self) -> Option<Rule<'a, 'b>> {
+impl<'a, 'input, 'vm> ParseRule<'a, 'input, 'vm> {
+    pub fn as_rule(self) -> Option<Rule<'a, 'input, 'vm>> {
         if let ParseRule::Rule(rule) = self {
             rule
         } else {
@@ -70,7 +71,7 @@ impl<'a, 'b> ParseRule<'a, 'b> {
     }
 }
 
-fn get_rule<'a, 'b>(typ: TokenType, rule_type: RuleType) -> ParseRule<'a, 'b> {
+fn get_rule<'a, 'input, 'vm>(typ: TokenType, rule_type: RuleType) -> ParseRule<'a, 'input, 'vm> {
     macro_rules! rule {
         ($prefix:expr, $infix:expr, $precedence:expr) => {
             match rule_type {
@@ -137,18 +138,20 @@ pub struct Parser<'input> {
     pub panic_mode: bool,
 }
 
-pub struct Compiler<'input> {
+pub struct Compiler<'input, 'vm> {
     scanner: Scanner<'input>,
     parser: Parser<'input>,
+    interner: &'vm mut StringInterner,
     compiling_chunk: Chunk,
 }
 
-impl<'input> Compiler<'input> {
-    pub fn new(src: &'input str) -> Self {
+impl<'input, 'vm> Compiler<'input, 'vm> {
+    pub fn new(src: &'input str, interner: &'vm mut StringInterner) -> Self {
         Self {
             scanner: Scanner::new(src),
             parser: Parser::default(),
             compiling_chunk: Chunk::new(),
+            interner,
         }
     }
 
@@ -197,7 +200,7 @@ impl<'input> Compiler<'input> {
 
     fn string(&mut self) {
         let str = self.parser.previous.src;
-        let istr = self.compiling_chunk.interner.intern(&str[1..str.len() - 1]);
+        let istr = self.interner.intern(&str[1..str.len() - 1]);
         self.emit_constant(Value::String(istr))
     }
 

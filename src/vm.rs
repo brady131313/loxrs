@@ -1,6 +1,7 @@
 use crate::{
     chunk::{Chunk, OpCode},
     compiler::Compiler,
+    object::StringInterner,
     stack::Stack,
     value::Value,
 };
@@ -18,6 +19,7 @@ pub struct Vm {
     chunk: Chunk,
     ip: usize,
     stack: Stack<Value, STACK_SIZE>,
+    interner: StringInterner,
 }
 
 impl Vm {
@@ -26,11 +28,12 @@ impl Vm {
             chunk: Chunk::new(),
             ip: 0,
             stack: Stack::new(),
+            interner: StringInterner::new(),
         }
     }
 
     pub fn interpret(&mut self, src: &str) -> InterpretResult {
-        let compiler = Compiler::new(src);
+        let compiler = Compiler::new(src, &mut self.interner);
 
         let chunk = compiler.compile()?;
         self.chunk = chunk;
@@ -79,28 +82,26 @@ impl Vm {
                 }
                 OpCode::Greater => self.binary_op(|a, b| a > b)?,
                 OpCode::Less => self.binary_op(|a, b| a < b)?,
-                OpCode::Add => {
-                    match (self.stack.peek(0), self.stack.peek(1)) {
-                        (Some(Value::String(..)), Some(Value::String(..))) => {
-                            let b_intered = self.stack.pop().as_str().unwrap();
-                            let b = self.chunk.interner.get(b_intered);
+                OpCode::Add => match (self.stack.peek(0), self.stack.peek(1)) {
+                    (Some(Value::String(..)), Some(Value::String(..))) => {
+                        let b_intered = self.stack.pop().as_str().unwrap();
+                        let b = self.interner.get(b_intered);
 
-                            let a_intered = self.stack.pop().as_str().unwrap();
-                            let a = self.chunk.interner.get(a_intered);
-                            
-                            let concated = format!("{a}{b}");
-                            let res = self.chunk.interner.intern(concated);
-                            self.stack.push(Value::String(res))
-                        },
-                        (Some(Value::Num(..)), Some(Value::Num(..))) => {
-                            let b = self.stack.pop().as_num().unwrap();
-                            let a = self.stack.pop().as_num().unwrap();
-                            self.stack.push(Value::Num(a + b));
-                        },
-                        _ => {
-                            self.runtime_error("Operands must be two numbers or two strings.");
-                            return Err(InterpretError::Runtime)
-                        }
+                        let a_intered = self.stack.pop().as_str().unwrap();
+                        let a = self.interner.get(a_intered);
+
+                        let concated = format!("{a}{b}");
+                        let res = self.interner.intern(concated);
+                        self.stack.push(Value::String(res))
+                    }
+                    (Some(Value::Num(..)), Some(Value::Num(..))) => {
+                        let b = self.stack.pop().as_num().unwrap();
+                        let a = self.stack.pop().as_num().unwrap();
+                        self.stack.push(Value::Num(a + b));
+                    }
+                    _ => {
+                        self.runtime_error("Operands must be two numbers or two strings.");
+                        return Err(InterpretError::Runtime);
                     }
                 },
                 OpCode::Subtract => self.binary_op(|a, b| a - b)?,
@@ -157,7 +158,7 @@ impl Vm {
 
     fn print_val(&self, val: Value) {
         if let Value::String(istr) = val {
-            let str = self.chunk.interner.get(istr);
+            let str = self.interner.get(istr);
             println!("\"{str}\"")
         } else {
             println!("{val}")
