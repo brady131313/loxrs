@@ -1,6 +1,7 @@
 use crate::{
     chunk::{Chunk, OpCode},
     compiler::Compiler,
+    object::Object,
     stack::Stack,
     value::Value,
 };
@@ -18,6 +19,7 @@ pub struct Vm {
     chunk: Chunk,
     ip: usize,
     stack: Stack<Value, STACK_SIZE>,
+    objects: Vec<Object>,
 }
 
 impl Vm {
@@ -26,6 +28,7 @@ impl Vm {
             chunk: Chunk::new(),
             ip: 0,
             stack: Stack::new(),
+            objects: Vec::new(),
         }
     }
 

@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use crate::object::Object;
+
 const FLOAT_TOL: f64 = 1e-9;
 
 #[derive(Debug, Copy, Clone)]
@@ -7,6 +9,7 @@ pub enum Value {
     Nil,
     Bool(bool),
     Num(f64),
+    // Obj(&'a Object)
 }
 
 impl Value {
@@ -56,6 +59,7 @@ impl Display for Value {
             Self::Nil => write!(f, "nil"),
             Self::Bool(b) => write!(f, "{b}"),
             Self::Num(n) => write!(f, "{n}"),
+            // Self::Obj(o) => write!(f, "{o}")
         }
     }
 }
