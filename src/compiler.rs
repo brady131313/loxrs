@@ -39,7 +39,7 @@ impl Precedence {
     }
 }
 
-type Rule<'a, 'input, 'vm> = fn(&'a mut Compiler<'input, 'vm>) -> ();
+type Rule<'a, 'input, 'vm> = fn(&'a mut Compiler<'input, 'vm>, bool) -> ();
 
 #[derive(Clone, Copy)]
 enum RuleType {
@@ -171,8 +171,9 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
 
     fn parse_precedence(&mut self, precedence: Precedence) {
         self.advance();
+        let can_assign = precedence <= Precedence::Assignment;
         match get_rule(self.parser.previous.typ, RuleType::Prefix).as_rule() {
-            Some(rule) => rule(self),
+            Some(rule) => rule(self, can_assign),
             None => {
                 self.error("Expect expression.");
                 return;
@@ -186,7 +187,11 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
                 .as_rule()
                 .expect("an infix parse rule");
 
-            rule(self)
+            rule(self, can_assign)
+        }
+
+        if can_assign && self.matches(TokenType::Equal) {
+            self.error("Invalid assignment target.")
         }
     }
 
@@ -255,25 +260,25 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         self.parse_precedence(Precedence::Assignment)
     }
 
-    fn number(&mut self) {
+    fn number(&mut self, _can_assign: bool) {
         let value: f64 = self.parser.previous.src.parse().expect("a number");
         self.emit_constant(Value::Num(value))
     }
 
-    fn string(&mut self) {
+    fn string(&mut self, _can_assign: bool) {
         let str = self.parser.previous.src;
         let istr = self.interner.intern(&str[1..str.len() - 1]);
         self.emit_constant(Value::String(istr))
     }
 
-    fn variable(&mut self) {
-        self.named_variable(self.parser.previous.src)
+    fn variable(&mut self, can_assign: bool) {
+        self.named_variable(self.parser.previous.src, can_assign)
     }
 
-    fn named_variable(&mut self, token: &str) {
+    fn named_variable(&mut self, token: &str, can_assign: bool) {
         let arg = self.identifier_constant(token);
 
-        if self.matches(TokenType::Equal) {
+        if can_assign && self.matches(TokenType::Equal) {
             self.expression();
             self.emit_long((OpCode::SetGlobal, OpCode::SetGlobalLong), arg)
         } else {
@@ -281,12 +286,12 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         }
     }
 
-    fn grouping(&mut self) {
+    fn grouping(&mut self, _can_assign: bool) {
         self.expression();
         self.consume(TokenType::RParen, "Expect ')' after expression.")
     }
 
-    fn unary(&mut self) {
+    fn unary(&mut self, _can_assign: bool) {
         let typ = self.parser.previous.typ;
         self.parse_precedence(Precedence::Unary);
 
@@ -297,7 +302,7 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         }
     }
 
-    fn binary(&mut self) {
+    fn binary(&mut self, _can_assign: bool) {
         let typ = self.parser.previous.typ;
         let precedence = get_rule(typ, RuleType::Precedence).as_precedence();
         self.parse_precedence(precedence.next());
@@ -317,7 +322,7 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         }
     }
 
-    fn literal(&mut self) {
+    fn literal(&mut self, _can_assign: bool) {
         match self.parser.previous.typ {
             TokenType::False => self.emit_byte(OpCode::False),
             TokenType::True => self.emit_byte(OpCode::True),
