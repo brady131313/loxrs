@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use crate::{
-    chunk::{Chunk, OpCode},
+    chunk::{Chunk, OpCode, OpLen},
     compiler::Compiler,
-    object::StringInterner,
+    object::{IString, StringInterner},
     stack::Stack,
     value::Value,
 };
@@ -42,9 +42,7 @@ impl Vm {
         self.chunk = chunk;
         self.ip = 0;
 
-        let r = self.run();
-        println!("{:?}", self.globals);
-        r
+        self.run()
     }
 
     fn read_byte(&mut self) -> Option<OpCode> {
@@ -54,27 +52,23 @@ impl Vm {
         instruction
     }
 
-    fn read_constant(&mut self) -> Option<&Value> {
-        let byte = self.read_byte().and_then(|o| o.as_byte())?;
-        self.chunk.get_constant(byte as usize)
-    }
-
-    fn read_long_constant(&mut self) -> Option<&Value> {
-        let b1 = self.read_byte().and_then(|o| o.as_byte())?;
-        let b2 = self.read_byte().and_then(|o| o.as_byte())?;
-        let idx = ((b1 as u16) << 8) | b2 as u16;
-        self.chunk.get_constant(idx as usize)
-    }
-
-    fn read_string(&mut self, long: bool) -> Option<&str> {
-        let str = if long {
-            self.read_long_constant()
-        } else {
-            self.read_constant()
+    fn read_constant<L: Into<OpLen>>(&mut self, len: L) -> Option<&Value> {
+        let idx = match len.into() {
+            OpLen::Short => self.read_byte().and_then(|o| o.as_byte())? as usize,
+            OpLen::Long => {
+                let b1 = self.read_byte().and_then(|o| o.as_byte())?;
+                let b2 = self.read_byte().and_then(|o| o.as_byte())?;
+                (((b1 as u16) << 8) | b2 as u16) as usize
+            }
         };
 
-        let istr = str?.as_str()?;
-        Some(self.interner.get(istr))
+        self.chunk.get_constant(idx)
+    }
+
+    /// This does not convert the IString with the interner because IString is copy
+    /// while reference to str would be tied to mut self making it pain to use
+    fn read_string<L: Into<OpLen>>(&mut self, len: L) -> Option<IString> {
+        self.read_constant(len)?.as_str()
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -90,12 +84,8 @@ impl Vm {
             }
 
             match self.read_byte().ok_or(InterpretError::Compile)? {
-                OpCode::Constant => {
-                    let constant = *self.read_constant().ok_or(InterpretError::Compile)?;
-                    self.stack.push(constant);
-                }
-                OpCode::ConstantLong => {
-                    let constant = *self.read_long_constant().ok_or(InterpretError::Compile)?;
+                code @ (OpCode::Constant | OpCode::ConstantLong) => {
+                    let constant = *self.read_constant(code).ok_or(InterpretError::Compile)?;
                     self.stack.push(constant);
                 }
                 OpCode::Nil => self.stack.push(Value::Nil),
@@ -104,13 +94,39 @@ impl Vm {
                 OpCode::Pop => {
                     self.stack.pop();
                 }
-                OpCode::DefineGlobal => {
-                    let name = self.read_string(false).expect("expected string").to_owned();
+                code @ (OpCode::GetGlobal | OpCode::GetGlobalLong) => {
+                    let iname = self.read_string(code).expect("expected string");
+                    let name = self.interner.get(iname);
+
+                    if let Some(&value) = self.globals.get(name) {
+                        self.stack.push(value)
+                    } else {
+                        let name = name.to_owned();
+                        self.runtime_error(format!("Undefined variable '{name}'"));
+                        return Err(InterpretError::Runtime);
+                    }
+                }
+                code @ (OpCode::DefineGlobal | OpCode::DefineGlobalLong) => {
+                    let iname = self.read_string(code).expect("expected string");
+                    let name = self.interner.get(iname).to_owned();
                     let value = *self.stack.peek(0).unwrap();
+
                     self.globals.insert(name, value);
                     self.stack.pop();
                 }
-                OpCode::DefineGlobalLong => todo!(),
+                code @ (OpCode::SetGlobal | OpCode::SetGlobalLong) => {
+                    let iname = self.read_string(code).expect("expected string");
+                    let name = self.interner.get(iname);
+
+                    if let Some(val) = self.globals.get_mut(name) {
+                        let new_val = self.stack.peek(0).unwrap();
+                        *val = *new_val
+                    } else {
+                        let name = name.to_owned();
+                        self.runtime_error(format!("Undefined variable '{name}'"));
+                        return Err(InterpretError::Runtime);
+                    }
+                }
                 OpCode::Equal => {
                     let b = self.stack.pop().unwrap();
                     let a = self.stack.pop().unwrap();
@@ -186,7 +202,7 @@ impl Vm {
         }
     }
 
-    fn runtime_error(&mut self, msg: &str) {
+    fn runtime_error<D: Display>(&mut self, msg: D) {
         println!("{msg}");
 
         let line = self.chunk.get_line(self.ip - 1);
@@ -210,11 +226,15 @@ mod tests {
 
     #[test]
     fn test_vm() {
-        let mut chunk = Chunk::new();
-        chunk.write_chunk(OpCode::Return, 1);
+        let test = (0..=(u8::MAX as usize + 1))
+            .into_iter()
+            .map(|i| format!("var a{i} = \"this is a test {i}\";"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let test = format!("{test} print a256;");
 
         let mut vm = Vm::new();
-        vm.chunk = chunk;
-        println!("{:?}", vm.run());
+        println!("{:?}", vm.interpret(&test));
+        panic!()
     }
 }

@@ -11,8 +11,12 @@ pub enum OpCode {
     True,
     False,
     Pop,
+    GetGlobal,
+    GetGlobalLong,
     DefineGlobal,
     DefineGlobalLong,
+    SetGlobal,
+    SetGlobalLong,
     Equal,
     Greater,
     Less,
@@ -39,6 +43,21 @@ impl OpCode {
 impl From<u8> for OpCode {
     fn from(val: u8) -> Self {
         Self::Byte(val)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum OpLen {
+    Short,
+    Long,
+}
+
+impl From<OpCode> for OpLen {
+    fn from(code: OpCode) -> Self {
+        match code {
+            OpCode::ConstantLong | OpCode::DefineGlobalLong | OpCode::GetGlobalLong => OpLen::Long,
+            _ => OpLen::Short,
+        }
     }
 }
 
@@ -162,10 +181,14 @@ impl Chunk {
             OpCode::True => simple_instruction("TRUE", offset),
             OpCode::False => simple_instruction("FALSE", offset),
             OpCode::Pop => simple_instruction("POP", offset),
+            OpCode::GetGlobal => constant_instruction("GET_GLOBAL", self, offset),
+            OpCode::GetGlobalLong => constant_long_instruction("GET_GLOBAL_LONG", self, offset),
             OpCode::DefineGlobal => constant_instruction("DEFINE_GLOBAL", self, offset),
             OpCode::DefineGlobalLong => {
                 constant_long_instruction("DEFINE_GLOBAL_LONG", self, offset)
             }
+            OpCode::SetGlobal => constant_instruction("SET_GLOBAL", self, offset),
+            OpCode::SetGlobalLong => constant_long_instruction("SET_GLOBAL_LONG", self, offset),
             OpCode::Equal => simple_instruction("EQUAL", offset),
             OpCode::Greater => simple_instruction("GREATER", offset),
             OpCode::Less => simple_instruction("LESS", offset),

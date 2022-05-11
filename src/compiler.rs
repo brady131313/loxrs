@@ -106,7 +106,7 @@ fn get_rule<'a, 'input, 'vm>(typ: TokenType, rule_type: RuleType) -> ParseRule<'
         TokenType::GreaterEqual => rule!(None, Some(Compiler::binary), Precedence::Comparison),
         TokenType::Less => rule!(None, Some(Compiler::binary), Precedence::Comparison),
         TokenType::LessEqual => rule!(None, Some(Compiler::binary), Precedence::Comparison),
-        TokenType::Identifier => rule!(None, None, Precedence::None),
+        TokenType::Identifier => rule!(Some(Compiler::variable), None, Precedence::None),
         TokenType::String => rule!(Some(Compiler::string), None, Precedence::None),
         TokenType::Number => rule!(Some(Compiler::number), None, Precedence::None),
         TokenType::And => rule!(None, None, Precedence::None),
@@ -264,6 +264,21 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         let str = self.parser.previous.src;
         let istr = self.interner.intern(&str[1..str.len() - 1]);
         self.emit_constant(Value::String(istr))
+    }
+
+    fn variable(&mut self) {
+        self.named_variable(self.parser.previous.src)
+    }
+
+    fn named_variable(&mut self, token: &str) {
+        let arg = self.identifier_constant(token);
+
+        if self.matches(TokenType::Equal) {
+            self.expression();
+            self.emit_long((OpCode::SetGlobal, OpCode::SetGlobalLong), arg)
+        } else {
+            self.emit_long((OpCode::GetGlobal, OpCode::GetGlobalLong), arg)
+        }
     }
 
     fn grouping(&mut self) {
