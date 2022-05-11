@@ -14,7 +14,7 @@ pub enum InterpretError {
 
 pub type InterpretResult<T = ()> = Result<T, InterpretError>;
 
-const STACK_SIZE: usize = 256;
+const STACK_SIZE: usize = 257;
 pub struct Vm {
     chunk: Chunk,
     ip: usize,
@@ -54,6 +54,13 @@ impl Vm {
         self.chunk.get_constant(byte as usize)
     }
 
+    fn read_long_constant(&mut self) -> Option<&Value> {
+        let b1 = self.read_byte().and_then(|o| o.as_byte())?;
+        let b2 = self.read_byte().and_then(|o| o.as_byte())?;
+        let idx = ((b1 as u16) << 8) | b2 as u16;
+        self.chunk.get_constant(idx as usize)
+    }
+
     fn run(&mut self) -> InterpretResult {
         loop {
             #[cfg(feature = "debug_trace_execution")]
@@ -71,10 +78,16 @@ impl Vm {
                     let constant = *self.read_constant().ok_or(InterpretError::Compile)?;
                     self.stack.push(constant);
                 }
-                OpCode::ConstantLong => todo!(),
+                OpCode::ConstantLong => {
+                    let constant = *self.read_long_constant().ok_or(InterpretError::Compile)?;
+                    self.stack.push(constant);
+                }
                 OpCode::Nil => self.stack.push(Value::Nil),
                 OpCode::True => self.stack.push(Value::Bool(true)),
                 OpCode::False => self.stack.push(Value::Bool(false)),
+                OpCode::Pop => {
+                    self.stack.pop();
+                }
                 OpCode::Equal => {
                     let b = *self.stack.pop();
                     let a = *self.stack.pop();
@@ -120,9 +133,11 @@ impl Vm {
                         return Err(InterpretError::Runtime);
                     }
                 }
-                OpCode::Return => {
+                OpCode::Print => {
                     let value = *self.stack.pop();
                     self.print_val(value);
+                }
+                OpCode::Return => {
                     return Ok(());
                 }
                 OpCode::Byte(b) => unimplemented!("unimplemented opcode {b}"),
@@ -163,5 +178,27 @@ impl Vm {
         } else {
             println!("{val}")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vm() {
+        // let mut vm = Vm::new();
+        let mut chunk = Chunk::new();
+        for i in 0..=u8::MAX as usize + 1 {
+            chunk.write_constant(i as f64, 1);
+        }
+        chunk.disassemble_chunk("test");
+
+        let mut vm = Vm::new();
+        vm.chunk = chunk;
+        println!("{:?}", vm.run());
+        println!("{:?}", vm.stack);
+
+        panic!()
     }
 }

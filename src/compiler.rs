@@ -157,8 +157,9 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
 
     pub fn compile(mut self) -> InterpretResult<Chunk> {
         self.advance();
-        self.expression();
-        self.consume(TokenType::Eof, "Expect end of expression.");
+        while !self.matches(TokenType::Eof) {
+            self.declaration()
+        }
         self.end_compiler();
 
         if self.parser.had_error {
@@ -187,6 +188,65 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
 
             rule(self)
         }
+    }
+
+    fn declaration(&mut self) {
+        if self.matches(TokenType::Var) {
+            self.var_declaration()
+        } else {
+            self.statement();
+        }
+
+        if self.parser.panic_mode {
+            self.synchronize()
+        }
+    }
+
+    fn var_declaration(&mut self) {
+        let global = self.parse_variable("Expect variable name.");
+
+        if self.matches(TokenType::Equal) {
+            self.expression();
+        } else {
+            self.emit_byte(OpCode::Nil);
+        }
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration.",
+        );
+        self.define_variable(global);
+    }
+
+    fn parse_variable(&mut self, msg: &str) -> usize {
+        self.consume(TokenType::Identifier, msg);
+        self.identifier_constant(&self.parser.previous.src)
+    }
+
+    fn define_variable(&mut self, global: usize) {}
+
+    fn identifier_constant(&mut self, token: &str) -> usize {
+        let istr = self.interner.intern(token);
+        self.make_constant(Value::String(istr))
+    }
+
+    fn statement(&mut self) {
+        if self.matches(TokenType::Print) {
+            self.print_statement()
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    fn print_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after value.");
+        self.emit_byte(OpCode::Print)
+    }
+
+    fn expression_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.");
+        self.emit_byte(OpCode::Pop)
     }
 
     fn expression(&mut self) {
@@ -249,6 +309,30 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         }
     }
 
+    fn synchronize(&mut self) {
+        self.parser.panic_mode = false;
+
+        while self.parser.current.typ != TokenType::Eof {
+            if self.parser.previous.typ == TokenType::Semicolon {
+                return;
+            } else {
+                match self.parser.current.typ {
+                    TokenType::Class
+                    | TokenType::Fun
+                    | TokenType::Var
+                    | TokenType::For
+                    | TokenType::If
+                    | TokenType::While
+                    | TokenType::Print
+                    | TokenType::Return => return,
+                    _ => {}
+                }
+            }
+
+            self.advance()
+        }
+    }
+
     fn end_compiler(&mut self) {
         self.emit_return();
 
@@ -269,8 +353,19 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
     }
 
     fn emit_constant(&mut self, value: Value) {
-        self.compiling_chunk
+        self.make_constant(value);
+    }
+
+    fn make_constant(&mut self, value: Value) -> usize {
+        if let Some(constant) = self
+            .compiling_chunk
             .write_constant(value, self.parser.previous.line)
+        {
+            constant
+        } else {
+            self.error("Too many constants in one chunk.");
+            0
+        }
     }
 
     fn emit_return(&mut self) {
@@ -296,6 +391,19 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         } else {
             self.error_at_current(msg)
         }
+    }
+
+    fn matches(&mut self, typ: TokenType) -> bool {
+        if !self.check(typ) {
+            false
+        } else {
+            self.advance();
+            true
+        }
+    }
+
+    fn check(&self, typ: TokenType) -> bool {
+        self.parser.current.typ == typ
     }
 
     fn error_at_current(&mut self, msg: &str) {

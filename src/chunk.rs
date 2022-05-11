@@ -10,6 +10,7 @@ pub enum OpCode {
     Nil,
     True,
     False,
+    Pop,
     Equal,
     Greater,
     Less,
@@ -19,6 +20,7 @@ pub enum OpCode {
     Divide,
     Not,
     Negate,
+    Print,
     Return,
     Byte(u8),
 }
@@ -72,17 +74,29 @@ impl Chunk {
         }
     }
 
-    pub fn write_constant<V: Into<Value>>(&mut self, value: V, line: usize) {
-        let idx = self.add_constant(value) as u16;
+    pub fn write_constant<V: Into<Value>>(&mut self, value: V, line: usize) -> Option<usize> {
+        self.write_maybe_long((OpCode::Constant, OpCode::ConstantLong), value, line)
+    }
 
-        if idx <= u8::MAX as u16 {
-            self.write_chunk(OpCode::Constant, line);
+    pub fn write_maybe_long<V: Into<Value>>(
+        &mut self,
+        pair: (OpCode, OpCode),
+        value: V,
+        line: usize,
+    ) -> Option<usize> {
+        let idx = self.add_constant(value);
+        if idx <= u8::MAX as usize {
+            self.write_chunk(pair.0, line);
             self.write_chunk(idx as u8, line);
-        } else {
-            self.write_chunk(OpCode::ConstantLong, line);
+        } else if idx <= u16::MAX as usize {
+            self.write_chunk(pair.1, line);
             self.write_chunk((idx >> 8) as u8, line);
             self.write_chunk(idx as u8, line);
+        } else {
+            return None;
         }
+
+        Some(idx)
     }
 
     pub fn get_byte(&self, offset: usize) -> Option<u8> {
@@ -103,8 +117,6 @@ impl Chunk {
     }
 
     pub fn get_line(&self, instruction: usize) -> usize {
-        // println!("{:?}", self.lines);
-
         let mut start = 0;
         let mut end = self.lines.len();
 
@@ -147,6 +159,7 @@ impl Chunk {
             OpCode::Nil => simple_instruction("NIL", offset),
             OpCode::True => simple_instruction("TRUE", offset),
             OpCode::False => simple_instruction("FALSE", offset),
+            OpCode::Pop => simple_instruction("POP", offset),
             OpCode::Equal => simple_instruction("EQUAL", offset),
             OpCode::Greater => simple_instruction("GREATER", offset),
             OpCode::Less => simple_instruction("LESS", offset),
@@ -156,6 +169,7 @@ impl Chunk {
             OpCode::Divide => simple_instruction("DIVIDE", offset),
             OpCode::Not => simple_instruction("NOT", offset),
             OpCode::Negate => simple_instruction("NEGATE", offset),
+            OpCode::Print => simple_instruction("PRINT", offset),
             OpCode::Byte(b) => {
                 println!("Unknown opcode {b}");
                 offset + 1
