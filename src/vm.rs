@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     chunk::{Chunk, OpCode},
     compiler::Compiler,
@@ -19,6 +21,7 @@ pub struct Vm {
     ip: usize,
     stack: Stack<Value>,
     interner: StringInterner,
+    globals: HashMap<String, Value>,
 }
 
 impl Vm {
@@ -28,6 +31,7 @@ impl Vm {
             ip: 0,
             stack: Stack::new(),
             interner: StringInterner::new(),
+            globals: HashMap::new(),
         }
     }
 
@@ -38,7 +42,9 @@ impl Vm {
         self.chunk = chunk;
         self.ip = 0;
 
-        self.run()
+        let r = self.run();
+        println!("{:?}", self.globals);
+        r
     }
 
     fn read_byte(&mut self) -> Option<OpCode> {
@@ -58,6 +64,17 @@ impl Vm {
         let b2 = self.read_byte().and_then(|o| o.as_byte())?;
         let idx = ((b1 as u16) << 8) | b2 as u16;
         self.chunk.get_constant(idx as usize)
+    }
+
+    fn read_string(&mut self, long: bool) -> Option<&str> {
+        let str = if long {
+            self.read_long_constant()
+        } else {
+            self.read_constant()
+        };
+
+        let istr = str?.as_str()?;
+        Some(self.interner.get(istr))
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -87,6 +104,13 @@ impl Vm {
                 OpCode::Pop => {
                     self.stack.pop();
                 }
+                OpCode::DefineGlobal => {
+                    let name = self.read_string(false).expect("expected string").to_owned();
+                    let value = *self.stack.peek(0).unwrap();
+                    self.globals.insert(name, value);
+                    self.stack.pop();
+                }
+                OpCode::DefineGlobalLong => todo!(),
                 OpCode::Equal => {
                     let b = self.stack.pop().unwrap();
                     let a = self.stack.pop().unwrap();
@@ -186,12 +210,8 @@ mod tests {
 
     #[test]
     fn test_vm() {
-        // let mut vm = Vm::new();
         let mut chunk = Chunk::new();
-        for i in 0..=u8::MAX as usize + 1 {
-            chunk.write_constant(i as f64 + 20.0, 1);
-            chunk.write_chunk(OpCode::Pop, 1);
-        }
+        chunk.write_chunk(OpCode::Return, 1);
 
         let mut vm = Vm::new();
         vm.chunk = chunk;

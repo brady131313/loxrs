@@ -11,6 +11,8 @@ pub enum OpCode {
     True,
     False,
     Pop,
+    DefineGlobal,
+    DefineGlobalLong,
     Equal,
     Greater,
     Less,
@@ -74,29 +76,29 @@ impl Chunk {
         }
     }
 
-    pub fn write_constant<V: Into<Value>>(&mut self, value: V, line: usize) -> Option<usize> {
-        self.write_maybe_long((OpCode::Constant, OpCode::ConstantLong), value, line)
-    }
+    // pub fn write_constant<V: Into<Value>>(&mut self, value: V, line: usize) -> Option<usize> {
+    //     let idx = self.add_constant(value);
+    //     self.write_maybe_long((OpCode::Constant, OpCode::ConstantLong), idx, line)
+    // }
 
-    pub fn write_maybe_long<V: Into<Value>>(
+    pub fn write_maybe_long(
         &mut self,
         pair: (OpCode, OpCode),
-        value: V,
+        byte: usize,
         line: usize,
     ) -> Option<usize> {
-        let idx = self.add_constant(value);
-        if idx <= u8::MAX as usize {
+        if byte <= u8::MAX as usize {
             self.write_chunk(pair.0, line);
-            self.write_chunk(idx as u8, line);
-        } else if idx <= u16::MAX as usize {
+            self.write_chunk(byte as u8, line);
+        } else if byte <= u16::MAX as usize {
             self.write_chunk(pair.1, line);
-            self.write_chunk((idx >> 8) as u8, line);
-            self.write_chunk(idx as u8, line);
+            self.write_chunk((byte >> 8) as u8, line);
+            self.write_chunk(byte as u8, line);
         } else {
             return None;
         }
 
-        Some(idx)
+        Some(byte)
     }
 
     pub fn get_byte(&self, offset: usize) -> Option<u8> {
@@ -160,6 +162,10 @@ impl Chunk {
             OpCode::True => simple_instruction("TRUE", offset),
             OpCode::False => simple_instruction("FALSE", offset),
             OpCode::Pop => simple_instruction("POP", offset),
+            OpCode::DefineGlobal => constant_instruction("DEFINE_GLOBAL", self, offset),
+            OpCode::DefineGlobalLong => {
+                constant_long_instruction("DEFINE_GLOBAL_LONG", self, offset)
+            }
             OpCode::Equal => simple_instruction("EQUAL", offset),
             OpCode::Greater => simple_instruction("GREATER", offset),
             OpCode::Less => simple_instruction("LESS", offset),

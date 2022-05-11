@@ -222,7 +222,9 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         self.identifier_constant(&self.parser.previous.src)
     }
 
-    fn define_variable(&mut self, global: usize) {}
+    fn define_variable(&mut self, global: usize) {
+        self.emit_long((OpCode::DefineGlobal, OpCode::DefineGlobalLong), global)
+    }
 
     fn identifier_constant(&mut self, token: &str) -> usize {
         let istr = self.interner.intern(token);
@@ -353,18 +355,26 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
     }
 
     fn emit_constant(&mut self, value: Value) {
-        self.make_constant(value);
+        let constant = self.make_constant(value);
+        self.compiling_chunk.write_maybe_long(
+            (OpCode::Constant, OpCode::ConstantLong),
+            constant,
+            self.parser.previous.line,
+        );
+    }
+
+    fn emit_long(&mut self, pair: (OpCode, OpCode), byte: usize) {
+        self.compiling_chunk
+            .write_maybe_long(pair, byte, self.parser.previous.line);
     }
 
     fn make_constant(&mut self, value: Value) -> usize {
-        if let Some(constant) = self
-            .compiling_chunk
-            .write_constant(value, self.parser.previous.line)
-        {
-            constant
-        } else {
+        let constant = self.compiling_chunk.add_constant(value);
+        if constant > u16::MAX as usize {
             self.error("Too many constants in one chunk.");
             0
+        } else {
+            constant
         }
     }
 
