@@ -14,11 +14,10 @@ pub enum InterpretError {
 
 pub type InterpretResult<T = ()> = Result<T, InterpretError>;
 
-const STACK_SIZE: usize = 257;
 pub struct Vm {
     chunk: Chunk,
     ip: usize,
-    stack: Stack<Value, STACK_SIZE>,
+    stack: Stack<Value>,
     interner: StringInterner,
 }
 
@@ -89,18 +88,18 @@ impl Vm {
                     self.stack.pop();
                 }
                 OpCode::Equal => {
-                    let b = *self.stack.pop();
-                    let a = *self.stack.pop();
+                    let b = self.stack.pop().unwrap();
+                    let a = self.stack.pop().unwrap();
                     self.stack.push(Value::Bool(a.eq(&b)));
                 }
                 OpCode::Greater => self.binary_op(|a, b| a > b)?,
                 OpCode::Less => self.binary_op(|a, b| a < b)?,
                 OpCode::Add => match (self.stack.peek(0), self.stack.peek(1)) {
                     (Some(Value::String(..)), Some(Value::String(..))) => {
-                        let b_intered = self.stack.pop().as_str().unwrap();
+                        let b_intered = self.stack.pop().unwrap().as_str().unwrap();
                         let b = self.interner.get(b_intered);
 
-                        let a_intered = self.stack.pop().as_str().unwrap();
+                        let a_intered = self.stack.pop().unwrap().as_str().unwrap();
                         let a = self.interner.get(a_intered);
 
                         let concated = format!("{a}{b}");
@@ -108,8 +107,8 @@ impl Vm {
                         self.stack.push(Value::String(res))
                     }
                     (Some(Value::Num(..)), Some(Value::Num(..))) => {
-                        let b = self.stack.pop().as_num().unwrap();
-                        let a = self.stack.pop().as_num().unwrap();
+                        let b = self.stack.pop().unwrap().as_num().unwrap();
+                        let a = self.stack.pop().unwrap().as_num().unwrap();
                         self.stack.push(Value::Num(a + b));
                     }
                     _ => {
@@ -121,12 +120,12 @@ impl Vm {
                 OpCode::Multiply => self.binary_op(|a, b| a * b)?,
                 OpCode::Divide => self.binary_op(|a, b| a / b)?,
                 OpCode::Not => {
-                    let val = self.stack.pop().is_falsey();
+                    let val = self.stack.pop().unwrap().is_falsey();
                     self.stack.push(Value::Bool(val))
                 }
                 OpCode::Negate => {
                     if let Some(Value::Num(..)) = self.stack.peek(0) {
-                        let constant = self.stack.pop().as_num().unwrap();
+                        let constant = self.stack.pop().unwrap().as_num().unwrap();
                         self.stack.push(Value::Num(-constant))
                     } else {
                         self.runtime_error("Operand must be a number.");
@@ -134,7 +133,7 @@ impl Vm {
                     }
                 }
                 OpCode::Print => {
-                    let value = *self.stack.pop();
+                    let value = self.stack.pop().unwrap();
                     self.print_val(value);
                 }
                 OpCode::Return => {
@@ -153,8 +152,8 @@ impl Vm {
         if let (Some(Value::Num(..)), Some(Value::Num(..))) =
             (self.stack.peek(0), self.stack.peek(1))
         {
-            let b = self.stack.pop().as_num().unwrap();
-            let a = self.stack.pop().as_num().unwrap();
+            let b = self.stack.pop().unwrap().as_num().unwrap();
+            let a = self.stack.pop().unwrap().as_num().unwrap();
             self.stack.push(f(a, b));
             Ok(())
         } else {
@@ -190,15 +189,12 @@ mod tests {
         // let mut vm = Vm::new();
         let mut chunk = Chunk::new();
         for i in 0..=u8::MAX as usize + 1 {
-            chunk.write_constant(i as f64, 1);
+            chunk.write_constant(i as f64 + 20.0, 1);
+            chunk.write_chunk(OpCode::Pop, 1);
         }
-        chunk.disassemble_chunk("test");
 
         let mut vm = Vm::new();
         vm.chunk = chunk;
         println!("{:?}", vm.run());
-        println!("{:?}", vm.stack);
-
-        panic!()
     }
 }
