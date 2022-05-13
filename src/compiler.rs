@@ -138,11 +138,47 @@ pub struct Parser<'input> {
     pub panic_mode: bool,
 }
 
+impl<'input> Parser<'input> {
+    fn error_at_current(&mut self, msg: &str) {
+        self.error_at(self.current, msg)
+    }
+
+    fn error(&mut self, msg: &str) {
+        self.error_at(self.previous, msg)
+    }
+
+    fn error_at(&mut self, token: Token, msg: &str) {
+        if self.panic_mode {
+            return;
+        }
+        self.panic_mode = true;
+
+        eprint!("[line {}] Error", token.line);
+
+        match token.typ {
+            TokenType::Eof => eprint!(" at end"),
+            TokenType::Error => {}
+            _ => eprint!(" at {}", token.src),
+        }
+
+        eprintln!(": {msg}");
+        self.had_error = true
+    }
+}
+
+#[derive(Debug)]
+pub struct Local<'input> {
+    name: Token<'input>,
+    depth: isize,
+}
+
 pub struct Compiler<'input, 'vm> {
     scanner: Scanner<'input>,
     parser: Parser<'input>,
     interner: &'vm mut StringInterner,
     compiling_chunk: Chunk,
+    locals: Vec<Local<'input>>,
+    scope_depth: isize,
 }
 
 impl<'input, 'vm> Compiler<'input, 'vm> {
@@ -151,6 +187,8 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
             scanner: Scanner::new(src),
             parser: Parser::default(),
             compiling_chunk: Chunk::new(),
+            locals: Vec::with_capacity(u8::MAX as usize),
+            scope_depth: 0,
             interner,
         }
     }
@@ -175,7 +213,7 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         match get_rule(self.parser.previous.typ, RuleType::Prefix).as_rule() {
             Some(rule) => rule(self, can_assign),
             None => {
-                self.error("Expect expression.");
+                self.parser.error("Expect expression.");
                 return;
             }
         };
@@ -191,7 +229,7 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         }
 
         if can_assign && self.matches(TokenType::Equal) {
-            self.error("Invalid assignment target.")
+            self.parser.error("Invalid assignment target.")
         }
     }
 
@@ -222,23 +260,74 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         self.define_variable(global);
     }
 
+    /// Consume identifier token and add its lexeme to chunk's
+    /// constant table if in global scope returning its index
     fn parse_variable(&mut self, msg: &str) -> usize {
         self.consume(TokenType::Identifier, msg);
+
+        self.declare_variable();
+        if self.scope_depth > 0 {
+            return 0;
+        }
+
         self.identifier_constant(&self.parser.previous.src)
     }
 
     fn define_variable(&mut self, global: usize) {
-        self.emit_long((OpCode::DefineGlobal, OpCode::DefineGlobalLong), global)
+        // locals behave like stack
+        if self.scope_depth == 0 {
+            self.emit_long((OpCode::DefineGlobal, OpCode::DefineGlobalLong), global)
+        }
     }
 
+    /// Intern string and insert into constant table
     fn identifier_constant(&mut self, token: &str) -> usize {
         let istr = self.interner.intern(token);
         self.make_constant(Value::String(istr))
     }
 
+    /// Add local variable to locals
+    fn declare_variable(&mut self) {
+        if self.scope_depth == 0 {
+            return;
+        }
+
+        let name = self.parser.previous;
+        for local in self.locals.iter().rev() {
+            if local.depth != -1 && local.depth < self.scope_depth {
+                break;
+            }
+
+            if name.src == local.name.src {
+                self.parser
+                    .error("Already a variable with this name in this scope.")
+            }
+        }
+
+        self.add_local(name)
+    }
+
+    /// Locals refer to variables by slot index which is limited to u16
+    fn add_local(&mut self, name: Token<'input>) {
+        if self.locals.len() > u16::MAX as usize {
+            self.parser
+                .error("Too many local variables in one function.");
+        } else {
+            self.locals.push(Local {
+                name,
+                depth: self.scope_depth,
+            })
+        }
+    }
+
     fn statement(&mut self) {
         if self.matches(TokenType::Print) {
             self.print_statement()
+        } else if self.matches(TokenType::LBrace) {
+            self.begin_scope();
+            self.block();
+            println!("{:#?}", self.locals);
+            self.end_scope()
         } else {
             self.expression_statement()
         }
@@ -248,6 +337,14 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         self.expression();
         self.consume(TokenType::Semicolon, "Expect ';' after value.");
         self.emit_byte(OpCode::Print)
+    }
+
+    fn block(&mut self) {
+        while !self.check(TokenType::RBrace) && !self.check(TokenType::Eof) {
+            self.declaration()
+        }
+
+        self.consume(TokenType::RBrace, "Expect '}' after block.")
     }
 
     fn expression_statement(&mut self) {
@@ -364,6 +461,26 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         }
     }
 
+    fn begin_scope(&mut self) {
+        self.scope_depth += 1
+    }
+
+    /// Look for variables at scope just left and discard. At runtime
+    /// locals occupy slot on stack so when they go out of scope, must pop
+    fn end_scope(&mut self) {
+        self.scope_depth -= 1;
+
+        while self
+            .locals
+            .last()
+            .map(|l| l.depth > self.scope_depth)
+            .unwrap_or(false)
+        {
+            self.emit_byte(OpCode::Pop);
+            self.locals.pop();
+        }
+    }
+
     fn emit_byte(&mut self, byte: OpCode) {
         self.compiling_chunk
             .write_chunk(byte, self.parser.previous.line)
@@ -388,10 +505,11 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
             .write_maybe_long(pair, byte, self.parser.previous.line);
     }
 
+    /// Insert constant into chunk, erroring if too many in table
     fn make_constant(&mut self, value: Value) -> usize {
         let constant = self.compiling_chunk.add_constant(value);
         if constant > u16::MAX as usize {
-            self.error("Too many constants in one chunk.");
+            self.parser.error("Too many constants in one chunk.");
             0
         } else {
             constant
@@ -410,7 +528,7 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
             if self.parser.current.typ != TokenType::Error {
                 break;
             } else {
-                self.error_at_current(self.parser.current.src)
+                self.parser.error_at_current(self.parser.current.src)
             }
         }
     }
@@ -419,7 +537,7 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         if self.parser.current.typ == typ {
             self.advance()
         } else {
-            self.error_at_current(msg)
+            self.parser.error_at_current(msg)
         }
     }
 
@@ -434,31 +552,5 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
 
     fn check(&self, typ: TokenType) -> bool {
         self.parser.current.typ == typ
-    }
-
-    fn error_at_current(&mut self, msg: &str) {
-        self.error_at(self.parser.current, msg)
-    }
-
-    fn error(&mut self, msg: &str) {
-        self.error_at(self.parser.previous, msg)
-    }
-
-    fn error_at(&mut self, token: Token, msg: &str) {
-        if self.parser.panic_mode {
-            return;
-        }
-        self.parser.panic_mode = true;
-
-        eprint!("[line {}] Error", token.line);
-
-        match token.typ {
-            TokenType::Eof => eprint!(" at end"),
-            TokenType::Error => {}
-            _ => eprint!(" at {}", token.src),
-        }
-
-        eprintln!(": {msg}");
-        self.parser.had_error = true
     }
 }
