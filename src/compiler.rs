@@ -333,8 +333,12 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
     fn statement(&mut self) {
         if self.matches(TokenType::Print) {
             self.print_statement()
+        } else if self.matches(TokenType::For) {
+            self.for_statement()
         } else if self.matches(TokenType::If) {
             self.if_statement()
+        } else if self.matches(TokenType::While) {
+            self.while_statement()
         } else if self.matches(TokenType::LBrace) {
             self.begin_scope();
             self.block();
@@ -348,6 +352,74 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         self.expression();
         self.consume(TokenType::Semicolon, "Expect ';' after value.");
         self.emit_byte(OpCode::Print)
+    }
+
+    fn while_statement(&mut self) {
+        let loop_start = self.compiling_chunk.len();
+        self.consume(TokenType::LParen, "Expect '(' after 'while'.");
+        self.expression();
+        self.consume(TokenType::RParen, "Expect ')' after condition.");
+
+        let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
+        self.emit_byte(OpCode::Pop); // Cond true pop value
+        self.statement();
+        self.emit_loop(loop_start);
+
+        self.patch_jump(exit_jump);
+        self.emit_byte(OpCode::Pop); // Cond was false pop value
+    }
+
+    fn for_statement(&mut self) {
+        self.begin_scope(); // init variable should be scoped to for
+                            
+        self.consume(TokenType::LParen, "Expect '(' after 'for'.");
+
+        // Initializer clause
+        if self.matches(TokenType::Semicolon) {
+            // No initializer
+        } else if self.matches(TokenType::Var) {
+            self.var_declaration();
+        } else {
+            self.expression_statement();
+        }
+
+        let mut loop_start = self.compiling_chunk.len();
+        let mut exit_jump: Option<usize> = None;
+
+        // Condition clause
+        if !self.matches(TokenType::Semicolon) {
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect ';' after loop condition.");
+
+            // Jump out of loop if cond is false
+            exit_jump = Some(self.emit_jump(OpCode::JumpIfFalse));
+            self.emit_byte(OpCode::Pop); // condition
+        }
+
+        // Increment clause
+        if !self.matches(TokenType::RParen) {
+            // jump over body on first iter
+            let body_jump = self.emit_jump(OpCode::Jump);
+            let increment_start = self.compiling_chunk.len();
+            self.expression();
+            self.emit_byte(OpCode::Pop); // Discard increment expr
+            self.consume(TokenType::RParen, "Expect ')' after for clauses.");
+
+            self.emit_loop(loop_start);
+            loop_start = increment_start;
+            self.patch_jump(body_jump);
+        }
+
+        self.statement();
+        self.emit_loop(loop_start);
+
+        // Only patch jump when there is condition clause
+        if let Some(exit_jump) = exit_jump {
+            self.patch_jump(exit_jump);
+            self.emit_byte(OpCode::Pop); // cond if false
+        }
+
+        self.end_scope();
     }
 
     fn block(&mut self) {
@@ -560,7 +632,7 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         }
     }
 
-    fn emit_byte(&mut self, byte: OpCode) {
+    fn emit_byte<B: Into<OpCode>>(&mut self, byte: B) {
         self.compiling_chunk
             .write_chunk(byte, self.parser.previous.line)
     }
@@ -570,10 +642,23 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         self.emit_byte(b2)
     }
 
+    fn emit_loop(&mut self, loop_start: usize) {
+        self.emit_byte(OpCode::Loop);
+
+        let offset = self.compiling_chunk.len() - loop_start + 2;
+        if offset > u16::MAX as usize {
+            self.parser.error("Loop body too large.")
+        }
+
+        let (l1, l2) = split_u16(offset as u16);
+        self.emit_byte(l1);
+        self.emit_byte(l2);
+    }
+
     fn emit_jump(&mut self, instruction: OpCode) -> usize {
         self.emit_byte(instruction);
-        self.emit_byte(OpCode::Byte(u8::MAX));
-        self.emit_byte(OpCode::Byte(u8::MAX));
+        self.emit_byte(u8::MAX);
+        self.emit_byte(u8::MAX);
 
         self.compiling_chunk.len() - 2
     }

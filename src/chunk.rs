@@ -33,6 +33,7 @@ pub enum OpCode {
     Print,
     Jump,
     JumpIfFalse,
+    Loop,
     Return,
     Byte(u8),
 }
@@ -226,6 +227,7 @@ impl Chunk {
             OpCode::Print => self.simple_instruction("PRINT", offset),
             OpCode::Jump => self.jump_instruction("JUMP", 1, offset),
             OpCode::JumpIfFalse => self.jump_instruction("JUMP_IF_FALSE", 1, offset),
+            OpCode::Loop => self.jump_instruction("LOOP", -1, offset),
             OpCode::Byte(b) => {
                 println!("Unknown opcode {b}");
                 offset + 1

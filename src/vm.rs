@@ -209,6 +209,10 @@ impl Vm {
                         self.ip += offset as usize
                     }
                 }
+                OpCode::Loop => {
+                    let offset = self.read_short().expect("a short to jump to");
+                    self.ip -= offset as usize
+                }
                 OpCode::Return => {
                     return Ok(());
                 }
