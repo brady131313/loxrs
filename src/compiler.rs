@@ -110,7 +110,7 @@ fn get_rule<'a, 'input, 'vm>(typ: TokenType, rule_type: RuleType) -> ParseRule<'
         TokenType::Identifier => rule!(Some(Compiler::variable), None, Precedence::None),
         TokenType::String => rule!(Some(Compiler::string), None, Precedence::None),
         TokenType::Number => rule!(Some(Compiler::number), None, Precedence::None),
-        TokenType::And => rule!(None, None, Precedence::None),
+        TokenType::And => rule!(None, Some(Compiler::and), Precedence::And),
         TokenType::Class => rule!(None, None, Precedence::None),
         TokenType::Else => rule!(None, None, Precedence::None),
         TokenType::False => rule!(Some(Compiler::literal), None, Precedence::None),
@@ -118,7 +118,7 @@ fn get_rule<'a, 'input, 'vm>(typ: TokenType, rule_type: RuleType) -> ParseRule<'
         TokenType::Fun => rule!(None, None, Precedence::None),
         TokenType::If => rule!(None, None, Precedence::None),
         TokenType::Nil => rule!(Some(Compiler::literal), None, Precedence::None),
-        TokenType::Or => rule!(None, None, Precedence::None),
+        TokenType::Or => rule!(None, Some(Compiler::or), Precedence::Or),
         TokenType::Print => rule!(None, None, Precedence::None),
         TokenType::Return => rule!(None, None, Precedence::None),
         TokenType::Super => rule!(None, None, Precedence::None),
@@ -383,6 +383,26 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
             self.statement(); // statement if cond false
         }
         self.patch_jump(else_jump)
+    }
+
+    fn and(&mut self, _can_assign: bool) {
+        let end_jump = self.emit_jump(OpCode::JumpIfFalse);
+
+        self.emit_byte(OpCode::Pop);
+        self.parse_precedence(Precedence::And);
+
+        self.patch_jump(end_jump)
+    }
+
+    fn or(&mut self, _can_assign: bool) {
+        let else_jump = self.emit_jump(OpCode::JumpIfFalse);
+        let end_jump = self.emit_jump(OpCode::Jump);
+
+        self.patch_jump(else_jump);
+        self.emit_byte(OpCode::Pop);
+
+        self.parse_precedence(Precedence::Or);
+        self.patch_jump(end_jump)
     }
 
     fn expression(&mut self) {
