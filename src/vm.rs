@@ -5,6 +5,7 @@ use crate::{
     compiler::Compiler,
     object::{IString, StringInterner},
     stack::Stack,
+    util::join_u8s,
     value::Value,
 };
 
@@ -52,16 +53,25 @@ impl Vm {
         instruction
     }
 
-    fn read_constant<L: Into<OpLen>>(&mut self, len: L) -> Option<&Value> {
-        let idx = match len.into() {
-            OpLen::Short => self.read_byte().and_then(|o| o.as_byte())? as usize,
-            OpLen::Long => {
-                let b1 = self.read_byte().and_then(|o| o.as_byte())?;
-                let b2 = self.read_byte().and_then(|o| o.as_byte())?;
-                (((b1 as u16) << 8) | b2 as u16) as usize
-            }
-        };
+    fn read_short(&mut self) -> Option<u16> {
+        let b1 = self.read_byte().and_then(|o| o.as_byte())?;
+        let b2 = self.read_byte().and_then(|o| o.as_byte())?;
+        let idx = join_u8s(b1, b2);
+        Some(idx)
+    }
 
+    fn read_idx<L: Into<OpLen>>(&mut self, len: L) -> Option<usize> {
+        match len.into() {
+            OpLen::Short => self
+                .read_byte()
+                .and_then(|o| o.as_byte())
+                .map(|b| b as usize),
+            OpLen::Long => self.read_short().map(|b| b as usize),
+        }
+    }
+
+    fn read_constant<L: Into<OpLen>>(&mut self, len: L) -> Option<&Value> {
+        let idx = self.read_idx(len)?;
         self.chunk.get_constant(idx)
     }
 
@@ -93,6 +103,18 @@ impl Vm {
                 OpCode::False => self.stack.push(Value::Bool(false)),
                 OpCode::Pop => {
                     self.stack.pop();
+                }
+                code @ (OpCode::GetLocal | OpCode::GetLocalLong) => {
+                    let slot = self.read_idx(code).expect("a slot idx");
+                    let slot_val = *self.stack.get(slot).expect("invalid stack idx");
+                    self.stack.push(slot_val);
+                }
+                code @ (OpCode::SetLocal | OpCode::SetLocalLong) => {
+                    let slot = self.read_idx(code).expect("a slot idx");
+                    let new_val = *self.stack.peek(0).expect("invalid stack idx");
+                    self.stack
+                        .set(slot, new_val)
+                        .expect("failed to update slot");
                 }
                 code @ (OpCode::GetGlobal | OpCode::GetGlobalLong) => {
                     let iname = self.read_string(code).expect("expected string");
@@ -175,6 +197,17 @@ impl Vm {
                 OpCode::Print => {
                     let value = self.stack.pop().unwrap();
                     self.print_val(value);
+                }
+                OpCode::Jump => {
+                    let offset = self.read_short().expect("a short to jump to");
+                    self.ip += offset as usize
+                }
+                OpCode::JumpIfFalse => {
+                    let offset = self.read_short().expect("a short to jump to");
+                    let cond = self.stack.peek(0).expect("a test condition");
+                    if cond.is_falsey() {
+                        self.ip += offset as usize
+                    }
                 }
                 OpCode::Return => {
                     return Ok(());

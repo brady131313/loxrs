@@ -1,0 +1,18 @@
+if (true) {
+    print "This is true";
+}
+
+if (false) {
+    print "nothing";
+} else {
+    print "Second cond was false";
+}
+
+var x = 11;
+var y = 10;
+
+if (x < y) {
+    print "x is less than y";
+} else {
+    print "y is greater than or equal to x";
+}

@@ -16,12 +16,23 @@ impl<T> Stack<T> {
         self.data.push(value.into())
     }
 
+    pub fn set<V: Into<T>>(&mut self, idx: usize, value: V) -> Option<()> {
+        let old_val = self.data.get_mut(idx)?;
+        *old_val = value.into();
+
+        Some(())
+    }
+
     pub fn pop(&mut self) -> Option<T> {
         self.data.pop()
     }
 
     pub fn peek(&self, distance: usize) -> Option<&T> {
         let idx = self.data.len().checked_sub(distance + 1)?;
+        self.data.get(idx)
+    }
+
+    pub fn get(&self, idx: usize) -> Option<&T> {
         self.data.get(idx)
     }
 

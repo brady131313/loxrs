@@ -2,6 +2,7 @@ use crate::{
     chunk::{Chunk, OpCode},
     object::StringInterner,
     scanner::{Scanner, Token, TokenType},
+    util::split_u16,
     value::Value,
     vm::{InterpretError, InterpretResult},
 };
@@ -169,7 +170,7 @@ impl<'input> Parser<'input> {
 #[derive(Debug)]
 pub struct Local<'input> {
     name: Token<'input>,
-    depth: isize,
+    depth: Option<usize>,
 }
 
 pub struct Compiler<'input, 'vm> {
@@ -178,7 +179,7 @@ pub struct Compiler<'input, 'vm> {
     interner: &'vm mut StringInterner,
     compiling_chunk: Chunk,
     locals: Vec<Local<'input>>,
-    scope_depth: isize,
+    scope_depth: usize,
 }
 
 impl<'input, 'vm> Compiler<'input, 'vm> {
@@ -273,11 +274,21 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         self.identifier_constant(&self.parser.previous.src)
     }
 
+    /// Variable is now ready for use
     fn define_variable(&mut self, global: usize) {
         // locals behave like stack
         if self.scope_depth == 0 {
             self.emit_long((OpCode::DefineGlobal, OpCode::DefineGlobalLong), global)
+        } else {
+            // Variable initializer is complete
+            self.mark_initialized()
         }
+    }
+
+    /// Mark last local as initialized by setting current depth. Panics if no locals
+    fn mark_initialized(&mut self) {
+        let last_local = self.locals.last_mut().expect("At least one local");
+        last_local.depth = Some(self.scope_depth)
     }
 
     /// Intern string and insert into constant table
@@ -286,7 +297,7 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         self.make_constant(Value::String(istr))
     }
 
-    /// Add local variable to locals
+    /// Add local variable to locals. Variable is added to scope
     fn declare_variable(&mut self) {
         if self.scope_depth == 0 {
             return;
@@ -294,8 +305,10 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
 
         let name = self.parser.previous;
         for local in self.locals.iter().rev() {
-            if local.depth != -1 && local.depth < self.scope_depth {
-                break;
+            if let Some(depth) = local.depth {
+                if depth < self.scope_depth {
+                    break;
+                }
             }
 
             if name.src == local.name.src {
@@ -313,20 +326,18 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
             self.parser
                 .error("Too many local variables in one function.");
         } else {
-            self.locals.push(Local {
-                name,
-                depth: self.scope_depth,
-            })
+            self.locals.push(Local { name, depth: None })
         }
     }
 
     fn statement(&mut self) {
         if self.matches(TokenType::Print) {
             self.print_statement()
+        } else if self.matches(TokenType::If) {
+            self.if_statement()
         } else if self.matches(TokenType::LBrace) {
             self.begin_scope();
             self.block();
-            println!("{:#?}", self.locals);
             self.end_scope()
         } else {
             self.expression_statement()
@@ -353,6 +364,27 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         self.emit_byte(OpCode::Pop)
     }
 
+    fn if_statement(&mut self) {
+        self.consume(TokenType::LParen, "Expect '(' after 'if'.");
+        self.expression();
+        self.consume(TokenType::RParen, "Expect ')' after condition.");
+
+        let then_jump = self.emit_jump(OpCode::JumpIfFalse);
+        self.emit_byte(OpCode::Pop); // Pop cond from stack if true
+        self.statement(); // statement if cond true
+
+        // Skip else clause if cond was true
+        let else_jump = self.emit_jump(OpCode::Jump);
+
+        self.patch_jump(then_jump);
+        self.emit_byte(OpCode::Pop); // Pop cond from stack if false
+
+        if self.matches(TokenType::Else) {
+            self.statement(); // statement if cond false
+        }
+        self.patch_jump(else_jump)
+    }
+
     fn expression(&mut self) {
         self.parse_precedence(Precedence::Assignment)
     }
@@ -373,14 +405,41 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
     }
 
     fn named_variable(&mut self, token: &str, can_assign: bool) {
-        let arg = self.identifier_constant(token);
+        let (arg, get_ops, set_ops) = if let Some(arg) = self.resolve_local(token) {
+            (
+                arg,
+                (OpCode::GetLocal, OpCode::GetLocalLong),
+                (OpCode::SetLocal, OpCode::SetLocalLong),
+            )
+        } else {
+            let arg = self.identifier_constant(token);
+            (
+                arg,
+                (OpCode::GetGlobal, OpCode::GetGlobalLong),
+                (OpCode::SetGlobal, OpCode::SetGlobalLong),
+            )
+        };
 
         if can_assign && self.matches(TokenType::Equal) {
             self.expression();
-            self.emit_long((OpCode::SetGlobal, OpCode::SetGlobalLong), arg)
+            self.emit_long(set_ops, arg)
         } else {
-            self.emit_long((OpCode::GetGlobal, OpCode::GetGlobalLong), arg)
+            self.emit_long(get_ops, arg)
         }
+    }
+
+    fn resolve_local(&mut self, name: &str) -> Option<usize> {
+        for (idx, local) in self.locals.iter().enumerate().rev() {
+            if local.name.src == name {
+                if local.depth.is_none() {
+                    self.parser
+                        .error("Can't read local variable in its own initializer.")
+                }
+
+                return Some(idx);
+            }
+        }
+        None
     }
 
     fn grouping(&mut self, _can_assign: bool) {
@@ -473,7 +532,7 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
         while self
             .locals
             .last()
-            .map(|l| l.depth > self.scope_depth)
+            .map(|l| l.depth.expect("initialized local") > self.scope_depth)
             .unwrap_or(false)
         {
             self.emit_byte(OpCode::Pop);
@@ -489,6 +548,35 @@ impl<'input, 'vm> Compiler<'input, 'vm> {
     fn emit_bytes(&mut self, b1: OpCode, b2: OpCode) {
         self.emit_byte(b1);
         self.emit_byte(b2)
+    }
+
+    fn emit_jump(&mut self, instruction: OpCode) -> usize {
+        self.emit_byte(instruction);
+        self.emit_byte(OpCode::Byte(u8::MAX));
+        self.emit_byte(OpCode::Byte(u8::MAX));
+
+        self.compiling_chunk.len() - 2
+    }
+
+    fn patch_jump(&mut self, offset: usize) {
+        let jump = self.compiling_chunk.len() - offset - 2;
+        if jump > u16::MAX as usize {
+            self.parser.error("Too much code to jump over.")
+        }
+
+        let (j1, j2) = split_u16(jump as u16);
+
+        let old_j1 = self
+            .compiling_chunk
+            .get_byte_mut(offset)
+            .expect("jump byte");
+        *old_j1 = j1;
+
+        let old_j2 = self
+            .compiling_chunk
+            .get_byte_mut(offset + 1)
+            .expect("jump byte");
+        *old_j2 = j2;
     }
 
     fn emit_constant(&mut self, value: Value) {

@@ -1,0 +1,67 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'lox_rs'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=lox_rs"
+                ],
+                "filter": {
+                    "name": "lox_rs",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'lox_rs'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=lox_rs",
+                    "--package=lox_rs",
+                    "--features=debug_trace_execution"
+                ],
+                "filter": {
+                    "name": "lox_rs",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "samples/simple.lox"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'lox_rs'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=lox_rs",
+                    "--package=lox_rs"
+                ],
+                "filter": {
+                    "name": "lox_rs",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
